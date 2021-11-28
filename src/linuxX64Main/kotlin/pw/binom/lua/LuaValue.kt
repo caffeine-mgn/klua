@@ -51,6 +51,8 @@ actual sealed interface LuaValue {
 
         actual val size: Int
             get() = map.size
+
+        actual fun toMap(): Map<LuaValue, LuaValue> = map
     }
 
     actual companion object {

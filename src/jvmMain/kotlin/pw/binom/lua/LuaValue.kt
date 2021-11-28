@@ -71,6 +71,13 @@ actual sealed interface LuaValue {
         actual constructor() : this(emptyMap())
 
         override fun toString(): kotlin.String {
+            return toMap().toString()
+        }
+
+        actual val size: Int
+            get() = native.rawlen()
+
+        actual fun toMap(): Map<LuaValue, LuaValue> {
             var key: LuaJValue = LuaJValue.NIL
             val map = HashMap<LuaValue, LuaValue>()
             do {
@@ -81,11 +88,8 @@ actual sealed interface LuaValue {
                 key = next.arg(1)
                 map[of(next.arg(1))] = of(next.arg(2))
             } while (true)
-            return map.toString()
+            return map
         }
-
-        actual val size: Int
-            get() = native.rawlen()
     }
 
     actual companion object {

@@ -1,5 +1,7 @@
 package pw.binom.lua
 
+import kotlin.jvm.JvmName
+
 expect sealed interface LuaValue {
     class Function : LuaValue
     class Number : LuaValue {
@@ -28,6 +30,7 @@ expect sealed interface LuaValue {
 
     class Table : LuaValue {
         val size: Int
+        fun toMap(): Map<LuaValue, LuaValue>
         operator fun get(key: LuaValue): LuaValue
         operator fun set(key: LuaValue, value: LuaValue)
 

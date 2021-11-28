@@ -33,25 +33,105 @@ actual class LuaEngine {
         luaL_openlibs(state)
     }
 
-    actual fun dispose() {
-
+    actual operator fun get(name: String): LuaValue {
+        lua_getglobal(state, name)
+        return readValue(this, -1)
     }
 
-    actual fun eval(text: String) {
-        val value = luaL_loadstring(state, text)
-        lua_pcall(state, 0, 0, 0)
-    }
-
-
-    actual fun setGlobal(name: String, value: LuaValue) {
+    actual operator fun set(name: String, value: LuaValue) {
         pushValue(this, value)
         lua_setglobal(state, name)
     }
 
-    actual fun getGlobal(name: String): LuaValue {
-        return readValue(this, 1)
+    actual fun dispose() {
+
+    }
+
+    actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
+        if (luaL_loadstring(state, text) != 0) {
+            throw LuaException("Can't eval text \"$text\"")
+        }
+        val exitCode = lua_pcall(state, 0, LUA_MULTRET, 0)
+        return pcallProcessing(exitCode)
+    }
+
+    actual fun call(
+        functionName: String,
+        vararg args: LuaValue
+    ): List<LuaValue> {
+        lua_getglobal(state, functionName)
+        if (lua_isnil(state, -1)) {
+            throw LuaException("Function \"$functionName\" not found")
+        }
+        if (!lua_isfunction(state, -1)) {
+            lua_pop(state, 1)
+            throw LuaException("\"$functionName\" is not a function")
+        }
+        args.forEach {
+            pushValue(this, it)
+        }
+        val exec = lua_pcall(state, args.size, LUA_MULTRET, 0)
+        return pcallProcessing(exec)
+    }
+
+    private fun pcallProcessing(exeCode: Int): List<LuaValue> {
+        when (exeCode) {
+            LUA_OK -> {
+                val count = lua_gettop(state)
+                return (0 until count).map {
+                    readValue(this, it + 1)
+                }
+            }
+            LUA_ERRRUN -> {
+                val message = if (lua_gettop(state) == 1 && lua_isstring(state, 1) != 0) {
+                    val str = lua_tostring(state, 1)
+                    lua_pop(state, 1)
+                    str
+                } else {
+                    null
+                }
+                luaL_traceback(state, state, message, 1)
+                val fullMessage = lua_tostring(state, -1)
+                lua_pop(state, 1)
+                throw LuaException(fullMessage)
+            }
+            LUA_ERRMEM -> throw RuntimeException("memory allocation error. For such errors, Lua does not call the message handler.")
+            LUA_ERRERR -> throw RuntimeException("error while running the message handler.")
+            else -> throw RuntimeException("Unknown invoke status")
+        }
     }
 }
+
+internal inline fun lua_istable(L: LuaState, n: Int) = (lua_type(L, (n)) == LUA_TTABLE)
+internal inline fun lua_call(L: LuaState, n: Int, r: Int) = lua_callk(L, (n), (r), 0, null)
+//fun traceback (L:LuaState):String? {
+//    if (lua_isstring(L, 1)!=1) {  /* 'message' not a string? */
+//        println("----#1")
+//        return null;  /* keep it intact */
+//    }
+//    lua_getglobal(L,"debug")
+//    if (!lua_istable(L, -1)) {
+//        println("----#2")
+//        lua_pop(L, 1);
+//        return null;
+//    }
+//    lua_getfield(L, -1, "traceback");
+//    if (!lua_isfunction(L, -1)) {
+//        println("----#3")
+//        lua_pop(L, 2);
+//        return null;
+//    }
+//    lua_pushvalue(L, 1);  /* pass error message */
+//    lua_pushinteger(L, 2);  /* skip this function and traceback */
+//    lua_call(L, 2, 1);  /* call debug.traceback */
+//    val top = lua_gettop(L)
+//    println("----#4 top=$top")
+//    return if (top == 1 && lua_isstring(L, 1) != 0) {
+//        lua_tostring(L, 1)
+//    } else {
+//        null
+//    }
+//}
 
 class StateOutputVarargs(val engine: LuaEngine) : OutputVarargs {
     var pushed = 0
@@ -103,6 +183,9 @@ private fun pushValue(engine: LuaEngine, value: LuaValue) {
     }
 }
 
+internal inline fun lua_isnil(L: LuaState, n: Int) = (lua_type(L, (n)) == LUA_TNIL)
+internal inline fun lua_isfunction(L: LuaState, n: Int) = (lua_type(L, (n)) == LUA_TFUNCTION)
+
 private fun readValue(engine: LuaEngine, index: Int): LuaValue {
     val type = lua_type(engine.state, index)
     if (type == LUA_TNONE) {
@@ -148,26 +231,6 @@ private fun LuaState.getStackSize() = lua_gettop(this)
 private fun LuaState.getStackString(index: Int) = lua_tostring(this, index)
 
 internal inline fun lua_tostring(L: LuaState, i: Int) = lua_tolstring(L, (i), null)?.toKString()
-
-private fun LuaState.getStackType(index: Int): LuaValueType? {
-    val type = lua_type(this, index)
-    if (type == LUA_TNONE) {
-        return null
-    }
-    return when (type) {
-        LUA_TNIL -> LuaValueType.NIL
-        LUA_TNUMBER -> LuaValueType.NUMBER
-        LUA_TBOOLEAN -> LuaValueType.BOOLEAN
-        LUA_TSTRING -> LuaValueType.STRING
-        LUA_TTABLE -> LuaValueType.TABLE
-        LUA_TFUNCTION -> LuaValueType.FUNCTION
-        LUA_TUSERDATA -> LuaValueType.USERDATA
-        LUA_TTHREAD -> LuaValueType.THREAD
-        LUA_TLIGHTUSERDATA -> LuaValueType.LIGHTUSERDATA
-//        else -> null
-        else -> throw RuntimeException("Unknown lua type: ${lua_typename(this, type)?.toKString()} (Code $type)")
-    }
-}
 
 fun lua_pushcfunction(L: LuaState, f: lua_CFunction) {
     lua_pushcclosure(L, (f), 0)
@@ -245,6 +308,11 @@ private val userFunction = staticCFunction<LuaState?, Int> { state ->
     val functionPtr = lua_touserdata(state, lua_upvalueindex(2))?.asStableRef<LuaFunction>()!!
     val function = functionPtr.get()
     self.stateOutputArgs.reset()
-    function.call(self.stateInputArgs, self.stateOutputArgs)
-    self.stateOutputArgs.pushed
+    try {
+        function.call(self.stateInputArgs, self.stateOutputArgs)
+        self.stateOutputArgs.pushed
+    } catch (e: Throwable) {
+        luaL_error(state, e.message ?: "")
+        0
+    }
 }
