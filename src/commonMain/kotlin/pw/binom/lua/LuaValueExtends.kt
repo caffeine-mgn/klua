@@ -63,6 +63,9 @@ val LuaValue.isUserdata get() = this is LuaValue.UserData
 val LuaValue.isNil get() = this === LuaValue.Nil
 val LuaValue.isRef get() = this is LuaValue.Ref
 
+val LuaValue.takeIfNotNil
+    get() = if (isNil) null else this
+
 val Long.lua
     get() = LuaValue.of(this)
 val Double.lua
