@@ -6,6 +6,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class CommonLuaEngineTest {
+    class MyObject(var value: Int)
 
     @Test
     fun callTest() {
@@ -35,6 +36,96 @@ class CommonLuaEngineTest {
         assertEquals(2, result.size)
         assertEquals(123.0, result[0].checkedNumber())
         assertEquals(456.0, result[1].checkedNumber())
+    }
+
+    @Test
+    fun getFromTableRef() {
+        val e = LuaEngine()
+        val o = ObjectContainer()
+        e["test"] = o.makeClosure {
+            val table = it[0].checkedTable()
+            assertEquals("test", table["a".lua].checkedString())
+            emptyList()
+        }
+        e.eval("test({a='test'})")
+    }
+
+    @Test
+    fun lightUserDataTest() {
+        val N1 = 5
+        val N2 = 10
+        val N3 = 15
+
+        val o = ObjectContainer()
+        val obj = MyObject(N1)
+        val lightUserData = o.add(obj)
+
+        assertEquals(obj, lightUserData.value())
+        assertEquals(N1, lightUserData.value<MyObject>().value)
+        obj.value = N2
+        assertEquals(N2, lightUserData.value<MyObject>().value)
+        lightUserData.value<MyObject>().value = N3
+        assertEquals(N3, obj.value)
+    }
+
+    @Test
+    fun testAutoCleanUserData() {
+        val e = LuaEngine()
+        val o = ObjectContainer()
+        e["create"] = o.makeClosure {
+            listOf(
+                e.createAC(MyObject(5))
+            )
+        }
+        e.eval(
+            """
+           create()
+           collectgarbage()
+        """
+        )
+    }
+
+    @Test
+    fun autoCleanClosureTest() {
+        val e = LuaEngine()
+        var called = false
+        val o = ObjectContainer()
+        e["make_function"] = o.makeClosure {
+            val func = e.createACClosure {
+                println("Called success")
+                called = true
+                emptyList()
+            }
+            listOf(func)
+        }
+        e.eval(
+            """
+           make_function()()
+           collectgarbage()
+        """
+        )
+        assertTrue(called)
+    }
+
+    @Test
+    fun userDataTest2() {
+        val N1 = 5
+        val N2 = 10
+        val N3 = 15
+
+        val e = LuaEngine()
+        val o = ObjectContainer()
+        val obj = MyObject(N1)
+        val lightUserData = o.add(obj)
+        val userData = e.createUserData(lightUserData)
+        println("data=${lightUserData}")
+
+        assertEquals(obj, userData.value())
+        assertEquals(N1, userData.value<MyObject>().value)
+        obj.value = N2
+        assertEquals(N2, userData.value<MyObject>().value)
+        userData.value<MyObject>().value = N3
+        assertEquals(N3, obj.value)
     }
 
     @Test
@@ -112,7 +203,7 @@ class CommonLuaEngineTest {
         val table = e.makeRef(LuaValue.of(mapOf("foo".lua to "bar".lua)))
 
         assertEquals(LuaValue.Nil, table.metatable)
-        table.metatable=(metatable)
+        table.metatable = (metatable)
         println("-->${table.toValue().toMap()}")
         println("-->${table.metatable.checkedTable().toMap()}")
 //        assertEquals("value", ref.getMetatable().checkedTable().rawGet("key".lua).checkedString())

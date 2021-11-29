@@ -8,7 +8,16 @@ expect sealed interface LuaValue {
         val value: Double
     }
 
-    class UserData : LuaValue
+    interface Data : LuaValue {
+        val value: Any?
+    }
+
+    class UserData : LuaValue, Ref, Callable, Meta, Data {
+        val toLightUserData: LightUserData
+    }
+
+    class LightUserData : Data {
+    }
 
     class LuaInt : LuaValue {
         constructor(value: Long)
@@ -60,6 +69,7 @@ expect sealed interface LuaValue {
 
     class FunctionRef : Ref, Callable {
         override fun call(vararg args: LuaValue): List<LuaValue>
+        fun toValue(): FunctionValue
     }
 
     object Nil : LuaValue

@@ -28,6 +28,15 @@ actual sealed interface LuaValue {
             get() = value
 
         override fun toString(): kotlin.String = "FunctionRef(${value.hashCode().toString(16)})"
+        actual fun toValue(): FunctionValue = FunctionValue(value)
+        override fun equals(other: Any?): kotlin.Boolean {
+            if (other !is FunctionRef) {
+                return false
+            }
+            return other.value === value
+        }
+
+        override fun hashCode(): Int = value.hashCode()
     }
 
     actual class Number actual constructor(actual val value: Double) : LuaValue {
@@ -170,8 +179,38 @@ actual sealed interface LuaValue {
             map
     }
 
-    actual class UserData(val native: LuaUserdata) : LuaValue {
+    actual interface Data : LuaValue {
+        actual val value: Any?
+    }
+
+    actual class UserData(override val native: LuaUserdata) : LuaValue, Ref, Callable, Meta, Data {
+        override fun call(vararg args: LuaValue): List<LuaValue> =
+            try {
+                native.invoke(args.toNative()).toCommon()
+            } catch (e: LuaError) {
+                throw LuaException(e.message)
+            }
+
+        override var metatable: LuaValue
+            get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
+            set(value) {
+                native.setmetatable(value.makeNative())
+            }
+        override val value: Any?
+            get() = native.m_instance
+
         override fun makeNative(): org.luaj.vm2.LuaValue = native
+        actual val toLightUserData: LightUserData
+            get() = LightUserData(value)
+
+        override fun toString(): kotlin.String = "UserData(${native.hashCode().toString(16)})"
+    }
+
+    actual class LightUserData(override val value: Any?) : Data {
+        override fun makeNative(): org.luaj.vm2.LuaValue =
+            LuaJLightUserdata(value)
+
+        override fun toString(): kotlin.String = "UserData(${value?.hashCode()?.toString(16) ?: 0})"
     }
 
     actual companion object {
@@ -186,12 +225,13 @@ actual sealed interface LuaValue {
             TableValue(HashMap(table), metatable)
 
         fun of(value: LuaJValue, ref: kotlin.Boolean): LuaValue {
-            println()
             return when (value.type()) {
                 LuaJValue.TNUMBER -> Number(value.checkdouble())
                 LuaJValue.TINT -> LuaInt(value.checkint().toLong())
                 LuaJValue.TBOOLEAN -> Boolean(value.checkboolean())
                 LuaJValue.TSTRING -> String(value.checkjstring())
+                LuaJLightUserdata.TYPE -> LightUserData(value.checkuserdata())
+                LuaJValue.TUSERDATA -> UserData(value as LuaUserdata)
                 LuaJValue.TTABLE -> {
                     if (ref) {
                         TableRef(value.checktable())

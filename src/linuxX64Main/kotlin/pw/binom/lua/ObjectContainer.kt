@@ -11,15 +11,15 @@ actual class ObjectContainer actual constructor() {
     actual fun makeClosure(func: LuaFunction): LuaValue.FunctionValue =
         LuaValue.FunctionValue(ptr = userFunction, upvalues = listOf(add(func)))
 
-    actual fun add(data: Any): LuaValue.UserData {
+    actual fun add(data: Any): LuaValue.LightUserData {
         val exist = objToPtr[data]
         if (exist != null) {
-            return LuaValue.UserData(exist)
+            return LuaValue.LightUserData(exist)
         }
-        val function = StableRef.create(data)
-        ptrToObj[function.asCPointer()] = data
-        objToPtr[data] = function.asCPointer()
-        return LuaValue.UserData(function.asCPointer())
+        val dataStableRef = StableRef.create(data)
+        ptrToObj[dataStableRef.asCPointer()] = data
+        objToPtr[data] = dataStableRef.asCPointer()
+        return LuaValue.LightUserData(dataStableRef.asCPointer())
     }
 
     actual fun remove(data: Any): Boolean {
@@ -33,7 +33,7 @@ actual class ObjectContainer actual constructor() {
         if (func.upvalues.size != 1) {
             return null
         }
-        val ptr = func.upvalues[0].userDataOrNull() ?: return null
+        val ptr = func.upvalues[0].lightUserDataOrNull() ?: return null
         return get(ptr) as? LuaFunction
     }
 
@@ -45,6 +45,6 @@ actual class ObjectContainer actual constructor() {
         objToPtr.clear()
     }
 
-    actual fun get(data: LuaValue.UserData): Any? =
+    actual fun get(data: LuaValue.LightUserData): Any? =
         ptrToObj[data.lightPtr]
 }

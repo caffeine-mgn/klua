@@ -70,9 +70,13 @@ fun LuaState.readValue(index: Int, ref: Boolean): LuaValue {
         }
 //        LUA_TUSERDATA -> TODO("User data not supported")
         LUA_TTHREAD -> TODO("Thread not supported")
-        LUA_TUSERDATA, LUA_TLIGHTUSERDATA -> {
+        LUA_TUSERDATA->{
+            val ref = klua_get_value(this, index)!!
+            LuaValue.UserData(ref = ref, state = this)
+        }
+        LUA_TLIGHTUSERDATA -> {
             val c = lua_touserdata(this, index)
-            LuaValue.UserData(c)
+            LuaValue.LightUserData(c)
         }
         else -> {
             val typename = lua_typename(this, type)?.toKString()

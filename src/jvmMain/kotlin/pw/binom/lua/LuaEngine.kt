@@ -3,6 +3,7 @@ package pw.binom.lua
 import org.luaj.vm2.Varargs
 import org.luaj.vm2.LuaError
 import org.luaj.vm2.LuaTable
+import org.luaj.vm2.LuaUserdata
 import org.luaj.vm2.lib.jse.JsePlatform
 
 actual class LuaEngine {
@@ -59,6 +60,30 @@ actual class LuaEngine {
 
     actual fun freeAllPinned() {
     }
+
+    actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData =
+        LuaValue.UserData(org.luaj.vm2.LuaValue.userdataOf(value.value))
+
+    actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
+        val metatable = LuaTable()
+        metatable.rawset("__call", ClosureAdapter(func))
+        return LuaValue.UserData(LuaUserdata(null, metatable))
+    }
+
+    actual fun setAC(userdata: LuaValue.UserData) {
+        val table = userdata.metatable
+        if (table is LuaValue.TableValue) {
+            table["__gc".lua] = LuaValue.Nil
+        } else {
+            userdata.metatable = LuaValue.TableValue()
+        }
+    }
+
+    actual fun createAC(value: LuaValue.LightUserData): LuaValue.UserData =
+        LuaValue.UserData(LuaJLightUserdata(value))
+
+    actual fun createAC(value: Any?): LuaValue.UserData =
+        LuaValue.UserData(LuaJLightUserdata(value))
 }
 
 internal fun Varargs.toCommon() =

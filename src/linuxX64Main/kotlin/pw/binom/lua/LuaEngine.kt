@@ -2,6 +2,7 @@
 
 package pw.binom.lua
 
+import kotlinx.cinterop.*
 import platform.internal_lua.*
 import kotlin.native.internal.createCleaner
 
@@ -12,6 +13,9 @@ actual class LuaEngine {
     init {
         luaL_openlibs(state)
     }
+
+    private var closureGcRef = makeRef(LuaValue.FunctionValue(closureGc, upvalues = emptyList()))
+    private var userdataGcRef = makeRef(LuaValue.FunctionValue(userdataGc, upvalues = emptyList()))
 
     private var internalPinned = HashMap<LuaValue.Ref, Int>()
     actual val pinned: Set<LuaValue.Ref>
@@ -70,18 +74,11 @@ actual class LuaEngine {
         value: LuaValue,
         vararg args: LuaValue
     ): List<LuaValue> {
-        println("try call $value...")
-        println("#1 lock got!")
         state.pushValue(value)
-        println("#2")
         args.forEach {
-            println("#3")
             state.pushValue(it)
-            println("#4")
         }
-        println("#5")
         val exec = lua_pcall(state, args.size, LUA_MULTRET, 0)
-        println("#6")
         return pcallProcessing(state, exec)
     }
 
@@ -119,6 +116,54 @@ actual class LuaEngine {
             luaL_unref(state, LUA_REGISTRYINDEX, it.value)
         }
         internalPinned.clear()
+    }
+
+    actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData {
+        state.checkState {
+            val mem = lua_newuserdata(state, sizeOf<klua_pointer>().convert())!!
+            val c = mem.reinterpret<klua_pointer>()
+            c.pointed.pointer = value.lightPtr
+            val ret = LuaValue.UserData(klua_get_value(state, -1)!!, state)
+            lua_pop(state, 1)
+            return ret
+        }
+    }
+
+    actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
+        val ref = StableRef.create(func)
+        val luaFunc = LuaValue.FunctionValue(userFunction, listOf(LuaValue.LightUserData(ref.asCPointer())))
+        val metatable = LuaValue.TableValue(
+            "__call".lua to luaFunc,
+            "__gc".lua to closureGcRef
+        )
+        val userData = createUserData(LuaValue.LightUserData(null))
+        userData.metatable = metatable
+        return userData
+    }
+
+    actual fun setAC(userdata: LuaValue.UserData) {
+        val table = userdata.metatable
+        if (table is LuaValue.Table) {
+            table["__gc".lua] = userdataGcRef
+        } else {
+            userdata.metatable = LuaValue.TableValue("__gc".lua to userdataGcRef)
+        }
+    }
+
+    actual fun createAC(value: LuaValue.LightUserData): LuaValue.UserData {
+        val ud = createUserData(value)
+        setAC(ud)
+        return ud
+    }
+
+    actual fun createAC(value: Any?): LuaValue.UserData {
+        try {
+            val ref = value?.let { StableRef.create(it) }?.asCPointer()
+            return createAC(LuaValue.LightUserData(ref))
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            throw e
+        }
     }
 }
 

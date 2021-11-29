@@ -2,6 +2,7 @@ package pw.binom.lua
 
 import cnames.structs.lua_State
 import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.convert
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.toLong
 import platform.internal_lua.*
@@ -29,34 +30,14 @@ internal inline fun lua_pushcfunction(L: LuaState, f: lua_CFunction) {
 
 internal inline fun lua_tostring(L: LuaState, i: Int) = lua_tolstring(L, (i), null)?.toKString()
 internal inline fun LuaState.pop(size: Int) = lua_pop(this, size)
+internal inline fun lua_newuserdata(L: LuaState, s: Int) = lua_newuserdatauv(L, s.convert(), 1)
 
 internal inline fun <T> LuaState.checkState(func: () -> T): T {
     val top = lua_gettop(this)
     return try {
         func()
     } finally {
-        check(lua_gettop(this) == top) { "Invalid Stack Size" }
+        val newTop = lua_gettop(this)
+        check(newTop == top) { "Invalid Stack Size. Expected: ${top}, Actual: $newTop" }
     }
-}
-
-/**
- * Draws stack without any changes
- */
-fun LuaState.printStack(message: String) {
-    println("---===$message===---")
-    val count = lua_gettop(this)
-    for (i in 1..count) {
-        val type = lua_type(this, i)
-        val typename = lua_typename(this, type)?.toKString()
-        val sb = StringBuilder("$i. type:$typename")
-        if (type == LUA_TTABLE) {
-            sb.append(" count:${lua_rawlen(this, i)}")
-            sb.append(" ptr:${lua_topointer(this, i)!!.toLong().toString(16)}")
-        }
-        if (type == LUA_TSTRING) {
-            sb.append(" value:\"${lua_tostring(this, i)}\"")
-        }
-        println(sb.toString())
-    }
-    println("---===$message===---")
 }

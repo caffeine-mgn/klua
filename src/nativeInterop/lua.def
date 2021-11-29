@@ -24,3 +24,7 @@ void klua_push_value(lua_State* L, TValue* slot){
 int klua_isvalid(lua_State* L,TValue* o){
     return (!ttisnil(o) || o != &G(L)->nilvalue);
 }
+
+typedef struct {
+  void* pointer;
+} klua_pointer;

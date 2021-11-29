@@ -1,9 +1,6 @@
 package pw.binom.lua
 
-import kotlinx.cinterop.COpaquePointer
-import kotlinx.cinterop.CPointer
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.toLong
+import kotlinx.cinterop.*
 import platform.internal_lua.*
 
 actual sealed interface LuaValue {
@@ -11,8 +8,63 @@ actual sealed interface LuaValue {
         override fun toString(): kotlin.String = "Function(${upvalues})"
     }
 
-    actual class UserData(val lightPtr: COpaquePointer?) : LuaValue {
-        override fun toString(): kotlin.String = "UserData(${lightPtr?.toLong()?.toString(16)})"
+    actual interface Data : LuaValue {
+        actual val value: Any?
+        fun dispose()
+    }
+
+    actual class UserData(override val ref: CPointer<TValue>, val state: LuaState) : LuaValue, Ref, Callable, Meta,
+        Data {
+        override var metatable: LuaValue
+            get() = getMetatable(state, this)
+            set(value) {
+                setMetatable(state, this, value)
+            }
+
+        override fun call(vararg args: LuaValue): List<LuaValue> {
+            state.pushValue(this)
+            return state.call(*args)
+        }
+
+        val link: klua_pointer
+            get() {
+                state.checkState {
+                    state.pushValue(this)
+                    val ptrLink = lua_touserdata(state, -1)!!
+                    state.pop(1)
+                    return ptrLink.reinterpret<klua_pointer>().pointed
+                }
+            }
+
+        val ptr: COpaquePointer?
+            get() = link.pointer
+
+        override val value: Any?
+            get() = ptr.toKotlinObject()
+
+        override fun dispose() {
+            val ptr = link.pointer ?: return
+            ptr.asStableRef<Any>().dispose()
+            link.pointer = null
+        }
+
+        actual val toLightUserData: LightUserData
+            get() = LightUserData(ptr)
+
+        override fun toString(): kotlin.String = "UserData(${ref.toLong().toString(16)})"
+    }
+
+    actual class LightUserData(var lightPtr: COpaquePointer?) : Data {
+        override val value: Any?
+            get() = lightPtr.toKotlinObject()
+
+        override fun dispose() {
+            val ptr = lightPtr ?: return
+            ptr.asStableRef<Any>().dispose()
+            lightPtr = null
+        }
+
+        override fun toString(): kotlin.String = "LightUserData(${lightPtr?.toLong()?.toString(16)})"
     }
 
     //    actual class Function(val ptr: lua_CFunction?, val upvalues: List<LuaValue>) : LuaValue
@@ -62,54 +114,66 @@ actual sealed interface LuaValue {
 
     actual class TableRef(override val ref: CPointer<TValue>, val state: LuaState) : Ref, Table, Callable, Meta {
         override operator fun get(key: LuaValue): LuaValue {
-            state.pushValue(this)
-            state.pushValue(key)
-            lua_gettable(state, -2)
-            val value = state.readValue(-1, true)
-            lua_pop(state, 1)
-            return value
+            state.checkState {
+                state.pushValue(this)
+                state.pushValue(key)
+                lua_gettable(state, -2)
+                val value = state.readValue(-1, ref = true)
+                lua_pop(state, 2)
+                return value
+            }
         }
 
         override operator fun set(key: LuaValue, value: LuaValue) {
-            state.pushValue(this)
-            state.pushValue(key)
-            state.pushValue(value)
-            lua_settable(state, -3)
-            lua_pop(state, 1)
+            state.checkState {
+                state.pushValue(this)
+                state.pushValue(key)
+                state.pushValue(value)
+                lua_settable(state, -3)
+                lua_pop(state, 1)
+            }
         }
 
         override fun rawGet(key: LuaValue): LuaValue {
-            state.pushValue(this)
-            state.pushValue(key)
-            lua_rawget(state, -2)
-            val value = state.readValue(-1, true)
-            lua_pop(state, 1)
-            return value
-        }
-
-        override fun rawSet(key: LuaValue, value: LuaValue) {
-            state.pushValue(this)
-            state.pushValue(key)
-            state.pushValue(value)
-            lua_rawset(state, -3)
-            lua_pop(state, 1)
-        }
-
-        override val size
-            get(): LuaValue {
+            state.checkState {
                 state.pushValue(this)
-                lua_len(state, -1)
+                state.pushValue(key)
+                lua_rawget(state, -2)
                 val value = state.readValue(-1, true)
                 lua_pop(state, 1)
                 return value
             }
+        }
+
+        override fun rawSet(key: LuaValue, value: LuaValue) {
+            state.checkState {
+                state.pushValue(this)
+                state.pushValue(key)
+                state.pushValue(value)
+                lua_rawset(state, -3)
+                lua_pop(state, 1)
+            }
+        }
+
+        override val size
+            get(): LuaValue {
+                state.checkState {
+                    state.pushValue(this)
+                    lua_len(state, -1)
+                    val value = state.readValue(-1, true)
+                    lua_pop(state, 1)
+                    return value
+                }
+            }
 
         override val rawSize: Int
             get() {
-                state.pushValue(this)
-                val len = lua_rawlen(state, -1)
-                lua_pop(state, 1)
-                return len.convert()
+                state.checkState {
+                    state.pushValue(this)
+                    val len = lua_rawlen(state, -1)
+                    lua_pop(state, 1)
+                    return len.convert()
+                }
             }
 
         override fun toMap(): Map<LuaValue, LuaValue> =
@@ -169,6 +233,23 @@ actual sealed interface LuaValue {
             state.pushValue(this)
             return state.call(*args)
         }
+
+        actual fun toValue(): FunctionValue =
+            state.checkState {
+                state.pushValue(this)
+                val ret = state.readValue(-1, ref = false) as FunctionValue
+                state.pop(1)
+                ret
+            }
+
+        override fun equals(other: Any?): kotlin.Boolean {
+            if (other !is FunctionRef) {
+                return false
+            }
+            return other.ref === ref
+        }
+
+        override fun hashCode(): Int = ref.toLong().toInt()
     }
 
     actual class TableValue constructor(val map: HashMap<LuaValue, LuaValue>, override var metatable: LuaValue) :
@@ -251,3 +332,10 @@ private fun setMetatable(state: LuaState, value: LuaValue.Meta, table: LuaValue)
         state.pop(1)
     }
 }
+
+private fun COpaquePointer?.toKotlinObject() =
+    if (this == null || this.toLong() == 0L) {
+        null
+    } else {
+        this.asStableRef<Any>().get()
+    }

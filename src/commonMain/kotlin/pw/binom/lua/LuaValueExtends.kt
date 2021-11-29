@@ -1,5 +1,7 @@
 package pw.binom.lua
 
+import kotlin.jvm.JvmInline
+
 fun LuaValue.stringOrNull() =
     (this as? LuaValue.String)?.value
 
@@ -15,16 +17,25 @@ fun LuaValue.booleanOrNull() =
 fun LuaValue.tableOrNull() =
     this as? LuaValue.Table
 
+fun LuaValue.callableOrNull() =
+    this as? LuaValue.Callable
+
 fun LuaValue.userDataOrNull() =
     this as? LuaValue.UserData
+
+fun LuaValue.lightUserDataOrNull() =
+    this as? LuaValue.LightUserData
+
+fun LuaValue.dataOrNull() =
+    this as? LuaValue.Data
 
 fun LuaValue.refOrNull() =
     this as? LuaValue.Ref
 
-fun LuaValue.Table.tableRefOrNull() =
+fun LuaValue.tableRefOrNull() =
     this as? LuaValue.TableRef
 
-fun LuaValue.Table.valueOrNull() =
+fun LuaValue.tableValueOrNull() =
     this as? LuaValue.TableValue
 
 fun LuaValue.checkedString() =
@@ -51,8 +62,23 @@ fun LuaValue.Table.checkedTableValue() =
 fun LuaValue.checkedRef() =
     (this as? LuaValue.Ref) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Ref")
 
+fun LuaValue.checkedCallable() =
+    (this as? LuaValue.Callable) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Callable")
+
 fun LuaValue.checkedUserdata() =
     (this as? LuaValue.UserData) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to UserData")
+
+fun LuaValue.checkedLightUserdata() =
+    (this as? LuaValue.LightUserData) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to LightUserData")
+
+fun LuaValue.checkedData() =
+    (this as? LuaValue.Data) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Data")
+
+fun LuaValue.checkedFunctionRef()=
+    (this as? LuaValue.FunctionRef) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to FunctionRef")
+
+fun LuaValue.checkedFunctionValue()=
+    (this as? LuaValue.FunctionValue) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to FunctionValue")
 
 val LuaValue.isString get() = this is LuaValue.String
 val LuaValue.isInt get() = this is LuaValue.LuaInt
@@ -60,8 +86,13 @@ val LuaValue.isNumber get() = this is LuaValue.Number
 val LuaValue.isBoolean get() = this is LuaValue.Boolean
 val LuaValue.isTable get() = this is LuaValue.Table
 val LuaValue.isUserdata get() = this is LuaValue.UserData
+val LuaValue.isData get() = this is LuaValue.Data
+val LuaValue.isLightUserdata get() = this is LuaValue.LightUserData
 val LuaValue.isNil get() = this === LuaValue.Nil
 val LuaValue.isRef get() = this is LuaValue.Ref
+val LuaValue.isCallable get() = this is LuaValue.Callable
+
+inline fun <reified T> LuaValue.Data.value(): T = value as T
 
 val LuaValue.takeIfNotNil
     get() = if (isNil) null else this

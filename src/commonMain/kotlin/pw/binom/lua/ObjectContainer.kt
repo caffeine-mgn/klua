@@ -8,14 +8,14 @@ expect class ObjectContainer {
     constructor()
 
     fun makeClosure(func: LuaFunction): LuaValue.FunctionValue
-    fun add(data: Any): LuaValue.UserData
+    fun add(data: Any): LuaValue.LightUserData
 
     /**
      * Remove [data] from Container
      * @return `true` on successful remove. `false` - object already removed
      */
     fun remove(data: Any): Boolean
-    fun get(data: LuaValue.UserData): Any?
+    fun get(data: LuaValue.LightUserData): Any?
     fun getClosure(func: LuaValue.FunctionValue): LuaFunction?
 
     /**

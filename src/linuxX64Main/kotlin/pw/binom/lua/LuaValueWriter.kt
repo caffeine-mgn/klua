@@ -30,7 +30,7 @@ fun LuaState.pushValue(value: LuaValue) {
                 lua_setmetatable(this, top)
             }
         }
-        is LuaValue.UserData -> {
+        is LuaValue.LightUserData -> {
             lua_pushlightuserdata(this, value.lightPtr)
         }
     }
