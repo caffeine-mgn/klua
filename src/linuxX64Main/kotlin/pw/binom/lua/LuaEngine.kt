@@ -3,8 +3,6 @@
 package pw.binom.lua
 
 import platform.internal_lua.*
-import pw.binom.concurrency.SpinLock
-import pw.binom.concurrency.synchronize
 import kotlin.native.internal.createCleaner
 
 actual class LuaEngine {
