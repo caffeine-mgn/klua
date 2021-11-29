@@ -53,7 +53,7 @@ const char lua_ident[] =
 #define isupvalue(i)		((i) < LUA_REGISTRYINDEX)
 
 
-static TValue *index2value (lua_State *L, int idx) {
+LUA_API TValue *index2value (lua_State *L, int idx) {
   CallInfo *ci = L->ci;
   if (idx > 0) {
     StkId o = ci->func + idx;

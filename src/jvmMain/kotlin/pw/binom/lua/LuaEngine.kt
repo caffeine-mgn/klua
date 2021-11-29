@@ -1,50 +1,69 @@
 package pw.binom.lua
 
-import org.luaj.vm2.*
-import org.luaj.vm2.LuaValue
-import org.luaj.vm2.lib.VarArgFunction
-import org.luaj.vm2.lib.ZeroArgFunction
+import org.luaj.vm2.Varargs
+import org.luaj.vm2.LuaError
+import org.luaj.vm2.LuaTable
 import org.luaj.vm2.lib.jse.JsePlatform
 
 actual class LuaEngine {
     private val globals = JsePlatform.standardGlobals()
 
-    actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
+    actual fun eval(text: String): List<LuaValue> =
         try {
-            val r = globals.load(text)
-            val result = r.invoke()
-            return (0 until result.narg()).map {
-                pw.binom.lua.LuaValue.of(result.arg(it + 1))
-            }
+            globals.load(text).invoke().toCommon()
+        } catch (e: LuaError) {
+            throw LuaException(e.message, e)
+        }
+
+    actual operator fun get(name: String): LuaValue =
+        LuaValue.of(globals.get(name), ref = true)
+
+    actual operator fun set(name: String, value: LuaValue) {
+        globals.set(name, value.makeNative())
+    }
+
+    actual fun call(
+        functionName: String,
+        vararg args: LuaValue
+    ): List<LuaValue> {
+        val func = globals.get(functionName)
+        try {
+            return func.invoke(args.toNative()).toCommon()
         } catch (e: LuaError) {
             throw LuaException(e.message)
         }
     }
 
-    actual fun dispose() {
-    }
-
-    actual operator fun get(name: String): pw.binom.lua.LuaValue =
-        pw.binom.lua.LuaValue.of(globals.get(name))
-
-    actual operator fun set(name: String, value: pw.binom.lua.LuaValue) {
-        globals.set(name, value.native)
-    }
-
     actual fun call(
-        functionName: String,
-        vararg args: pw.binom.lua.LuaValue
-    ): List<pw.binom.lua.LuaValue> {
-        val func = globals.get(functionName)
-        if (func.isnil()) {
-            throw LuaException("Function \"$functionName\" not found")
+        value: LuaValue,
+        vararg args: LuaValue
+    ): List<LuaValue> =
+        try {
+            value.makeNative().invoke(args.toNative()).toCommon()
+        } catch (e: LuaError) {
+            throw LuaException(e.message)
         }
-        if (!func.isfunction()) {
-            throw LuaException("\"$functionName\" is not a function")
-        }
-        val c = func.invoke(args.map { it.native }.toTypedArray())
-        return (0 until c.narg()).map {
-            pw.binom.lua.LuaValue.of(c.arg(0))
-        }
+
+    actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef =
+        LuaValue.FunctionRef(value.value)
+
+    actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef =
+        LuaValue.TableRef(value.makeNative() as LuaTable)
+
+    actual fun pin(ref: LuaValue.Ref): Boolean = false
+
+    actual fun unpin(ref: LuaValue.Ref): Boolean = false
+
+    actual val pinned: Set<LuaValue.Ref>
+        get() = emptySet()
+
+    actual fun freeAllPinned() {
     }
 }
+
+internal fun Varargs.toCommon() =
+    (1..narg()).map {
+        LuaValue.of(arg(it), ref = true)
+    }
+
+internal fun Array<out LuaValue>.toNative() = map { it.makeNative() }.toTypedArray()

@@ -1,14 +1,14 @@
 package pw.binom.lua
 
-import kotlin.jvm.JvmName
-
 expect sealed interface LuaValue {
-    class Function : LuaValue
+    class FunctionValue : LuaValue
     class Number : LuaValue {
         constructor(value: Double)
 
         val value: Double
     }
+
+    class UserData : LuaValue
 
     class LuaInt : LuaValue {
         constructor(value: Long)
@@ -28,15 +28,43 @@ expect sealed interface LuaValue {
         val value: kotlin.String
     }
 
-    class Table : LuaValue {
-        val size: Int
-        fun toMap(): Map<LuaValue, LuaValue>
-        operator fun get(key: LuaValue): LuaValue
-        operator fun set(key: LuaValue, value: LuaValue)
+    class TableValue : LuaValue, Table, Meta {
+        override fun rawGet(key: LuaValue): LuaValue
+        override fun rawSet(key: LuaValue, value: LuaValue)
+        override fun toMap(): Map<LuaValue, LuaValue>
 
         constructor(map: Map<LuaValue, LuaValue>)
         constructor(vararg keys: Pair<LuaValue, LuaValue>)
         constructor()
+    }
+
+    interface Callable : LuaValue {
+        fun call(vararg args: LuaValue): List<LuaValue>
+    }
+
+    interface Meta : LuaValue {
+        var metatable: LuaValue
+//        fun getMetatable(): LuaValue
+//        fun setMetatable(table: LuaValue)
+    }
+
+    interface Table : LuaValue {
+        val rawSize: Int
+        fun toMap(): Map<LuaValue, LuaValue>
+        fun rawGet(key: LuaValue): LuaValue
+        fun rawSet(key: LuaValue, value: LuaValue)
+    }
+
+    sealed interface Ref : LuaValue {
+    }
+
+    class TableRef : Ref, Table, Callable, Meta {
+        fun size(): LuaValue
+        fun value():TableValue
+    }
+
+    class FunctionRef : Ref, Callable {
+        override fun call(vararg args: LuaValue): List<LuaValue>
     }
 
     object Nil : LuaValue
@@ -45,7 +73,7 @@ expect sealed interface LuaValue {
         fun of(value: Long): LuaValue.LuaInt
         fun of(value: kotlin.Boolean): LuaValue.Boolean
         fun of(value: kotlin.String): LuaValue.String
-        fun of(table: Map<LuaValue, LuaValue>): LuaValue.Table
-        fun of(table: HashMap<LuaValue, LuaValue>): LuaValue.Table
+        fun of(table: Map<LuaValue, LuaValue>): LuaValue.TableValue
+        fun of(table: Map<LuaValue, LuaValue>, metatable: LuaValue): LuaValue.TableValue
     }
 }

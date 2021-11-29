@@ -137,7 +137,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 api("org.jetbrains.kotlin:kotlin-stdlib-common:${pw.binom.Versions.KOTLIN_VERSION}")
-//                api(project(":core"))
+                api("pw.binom.io:core:${pw.binom.Versions.BINOM_VERSION}")
             }
         }
 
@@ -159,6 +159,9 @@ kotlin {
                 dependsOn(commonMain)
             }
         }
+        val linuxX64Test by getting {
+
+        }
 
         if (pw.binom.Target.LINUX_ARM32HFP_SUPPORT) {
             val linuxArm32HfpMain by getting {
@@ -177,6 +180,11 @@ kotlin {
         val mingwX64Main by getting {
             dependencies {
                 dependsOn(linuxX64Main)
+            }
+        }
+        val mingwX64Test by getting {
+            dependencies {
+                dependsOn(linuxX64Test)
             }
         }
 

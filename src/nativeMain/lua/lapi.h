@@ -10,7 +10,7 @@
 
 #include "llimits.h"
 #include "lstate.h"
-
+LUA_API TValue *index2value (lua_State *L, int idx);
 
 /* Increments 'L->top', checking for stack overflows */
 #define api_incr_top(L)   {L->top++; api_check(L, L->top <= L->ci->top, \
