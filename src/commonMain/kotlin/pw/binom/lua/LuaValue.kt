@@ -42,6 +42,8 @@ expect sealed interface LuaValue {
         fun toMap(): Map<LuaValue, LuaValue>
         fun rawGet(key: LuaValue): LuaValue
         fun rawSet(key: LuaValue, value: LuaValue)
+        operator fun set(key: LuaValue, value: LuaValue)
+        operator fun get(key: LuaValue): LuaValue
     }
 
     sealed interface Ref : LuaValue

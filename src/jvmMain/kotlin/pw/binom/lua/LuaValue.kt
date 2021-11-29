@@ -75,6 +75,8 @@ actual sealed interface LuaValue {
         actual fun toMap(): Map<LuaValue, LuaValue>
         actual fun rawGet(key: LuaValue): LuaValue
         actual fun rawSet(key: LuaValue, value: LuaValue)
+        actual operator fun set(key: LuaValue, value: LuaValue)
+        actual operator fun get(key: LuaValue): LuaValue
     }
 
     actual sealed interface Ref : LuaValue {
@@ -102,6 +104,13 @@ actual sealed interface LuaValue {
         override fun rawSet(key: LuaValue, value: LuaValue) {
             native.rawset(key.makeNative(), value.makeNative())
         }
+
+        override fun set(key: LuaValue, value: LuaValue) {
+            native.set(key.makeNative(), value.makeNative())
+        }
+
+        override fun get(key: LuaValue): LuaValue =
+            of(native.get(key.makeNative()), ref = true)
 
         override var metatable: LuaValue
             get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
@@ -133,6 +142,13 @@ actual sealed interface LuaValue {
                 map[key] = value
             }
         }
+
+        override fun set(key: LuaValue, value: LuaValue) {
+            rawSet(key, value)
+        }
+
+        override fun get(key: LuaValue): LuaValue =
+            rawGet(key)
 
         override fun makeNative(): org.luaj.vm2.LuaValue =
             map.toNative()

@@ -47,9 +47,11 @@ actual sealed interface LuaValue {
     actual interface Table : LuaValue {
         actual val rawSize: Int
         actual val size: LuaValue
+        actual fun toMap(): Map<LuaValue, LuaValue>
         actual fun rawGet(key: LuaValue): LuaValue
         actual fun rawSet(key: LuaValue, value: LuaValue)
-        actual fun toMap(): Map<LuaValue, LuaValue>
+        actual operator fun set(key: LuaValue, value: LuaValue)
+        actual operator fun get(key: LuaValue): LuaValue
     }
 
     actual interface Meta : LuaValue {
@@ -59,7 +61,7 @@ actual sealed interface LuaValue {
     }
 
     actual class TableRef(override val ref: CPointer<TValue>, val state: LuaState) : Ref, Table, Callable, Meta {
-        operator fun get(key: LuaValue): LuaValue {
+        override operator fun get(key: LuaValue): LuaValue {
             state.pushValue(this)
             state.pushValue(key)
             lua_gettable(state, -2)
@@ -68,7 +70,7 @@ actual sealed interface LuaValue {
             return value
         }
 
-        operator fun set(key: LuaValue, value: LuaValue) {
+        override operator fun set(key: LuaValue, value: LuaValue) {
             state.pushValue(this)
             state.pushValue(key)
             state.pushValue(value)
@@ -197,6 +199,13 @@ actual sealed interface LuaValue {
                 map[key] = value
             }
         }
+
+        override fun set(key: LuaValue, value: LuaValue) {
+            rawSet(key, value)
+        }
+
+        override fun get(key: LuaValue): LuaValue =
+            rawGet(key)
 
         override fun toMap(): Map<LuaValue, LuaValue> = map
     }
