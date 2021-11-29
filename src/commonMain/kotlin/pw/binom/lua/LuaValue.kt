@@ -28,39 +28,32 @@ expect sealed interface LuaValue {
         val value: kotlin.String
     }
 
-    class TableValue : LuaValue, Table, Meta {
-        override fun rawGet(key: LuaValue): LuaValue
-        override fun rawSet(key: LuaValue, value: LuaValue)
-        override fun toMap(): Map<LuaValue, LuaValue>
-
-        constructor(map: Map<LuaValue, LuaValue>)
-        constructor(vararg keys: Pair<LuaValue, LuaValue>)
-        constructor()
-    }
-
     interface Callable : LuaValue {
         fun call(vararg args: LuaValue): List<LuaValue>
     }
 
     interface Meta : LuaValue {
         var metatable: LuaValue
-//        fun getMetatable(): LuaValue
-//        fun setMetatable(table: LuaValue)
     }
 
     interface Table : LuaValue {
         val rawSize: Int
+        val size: LuaValue
         fun toMap(): Map<LuaValue, LuaValue>
         fun rawGet(key: LuaValue): LuaValue
         fun rawSet(key: LuaValue, value: LuaValue)
     }
 
-    sealed interface Ref : LuaValue {
+    sealed interface Ref : LuaValue
+
+    class TableValue : LuaValue, Table, Meta {
+        constructor(map: Map<LuaValue, LuaValue>)
+        constructor(vararg keys: Pair<LuaValue, LuaValue>)
+        constructor()
     }
 
     class TableRef : Ref, Table, Callable, Meta {
-        fun size(): LuaValue
-        fun value():TableValue
+        fun toValue(): TableValue
     }
 
     class FunctionRef : Ref, Callable {

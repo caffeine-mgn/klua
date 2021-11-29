@@ -46,6 +46,7 @@ actual sealed interface LuaValue {
 
     actual interface Table : LuaValue {
         actual val rawSize: Int
+        actual val size: LuaValue
         actual fun rawGet(key: LuaValue): LuaValue
         actual fun rawSet(key: LuaValue, value: LuaValue)
         actual fun toMap(): Map<LuaValue, LuaValue>
@@ -92,13 +93,14 @@ actual sealed interface LuaValue {
             lua_pop(state, 1)
         }
 
-        actual fun size(): LuaValue {
-            state.pushValue(this)
-            lua_len(state, -1)
-            val value = state.readValue(-1, true)
-            lua_pop(state, 1)
-            return value
-        }
+        override val size
+            get(): LuaValue {
+                state.pushValue(this)
+                lua_len(state, -1)
+                val value = state.readValue(-1, true)
+                lua_pop(state, 1)
+                return value
+            }
 
         override val rawSize: Int
             get() {
@@ -109,7 +111,7 @@ actual sealed interface LuaValue {
             }
 
         override fun toMap(): Map<LuaValue, LuaValue> =
-            value().toMap()
+            toValue().toMap()
 
         override fun call(vararg args: LuaValue): List<LuaValue> {
             state.pushValue(this)
@@ -141,7 +143,7 @@ actual sealed interface LuaValue {
         override fun toString(): kotlin.String =
             "TableRef(${ref.toLong().toString(16)})"
 
-        actual fun value(): TableValue {
+        actual fun toValue(): TableValue {
             val t = state.checkState {
                 state.pushValue(this)
                 val result = state.readValue(-1, false)
@@ -183,9 +185,12 @@ actual sealed interface LuaValue {
         override val rawSize: Int
             get() = map.size
 
-        actual override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
+        override val size: LuaValue
+            get() = LuaInt(rawSize.toLong())
 
-        actual override fun rawSet(key: LuaValue, value: LuaValue) {
+        override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
+
+        override fun rawSet(key: LuaValue, value: LuaValue) {
             if (value is Nil) {
                 map.remove(key)
             } else {
@@ -193,7 +198,7 @@ actual sealed interface LuaValue {
             }
         }
 
-        actual override fun toMap(): Map<LuaValue, LuaValue> = map
+        override fun toMap(): Map<LuaValue, LuaValue> = map
     }
 
     actual object Nil : LuaValue {

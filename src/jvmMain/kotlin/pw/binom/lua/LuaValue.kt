@@ -27,7 +27,7 @@ actual sealed interface LuaValue {
         override val native: org.luaj.vm2.LuaValue
             get() = value
 
-        override fun toString(): kotlin.String="FunctionRef(${value.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "FunctionRef(${value.hashCode().toString(16)})"
     }
 
     actual class Number actual constructor(actual val value: Double) : LuaValue {
@@ -71,6 +71,7 @@ actual sealed interface LuaValue {
 
     actual interface Table : LuaValue {
         actual val rawSize: Int
+        actual val size: LuaValue
         actual fun toMap(): Map<LuaValue, LuaValue>
         actual fun rawGet(key: LuaValue): LuaValue
         actual fun rawSet(key: LuaValue, value: LuaValue)
@@ -89,7 +90,7 @@ actual sealed interface LuaValue {
     }
 
     actual class TableRef(override val native: org.luaj.vm2.LuaTable) : Ref, Table, Callable, Meta {
-        actual fun value(): TableValue =
+        actual fun toValue(): TableValue =
             TableValue(native.toMap(), metatable)
 
         override val rawSize: Int
@@ -103,7 +104,7 @@ actual sealed interface LuaValue {
         }
 
         override var metatable: LuaValue
-            get() = of(native.getmetatable()?:LuaJValue.NIL, ref = true)
+            get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
             set(value) {
                 native.setmetatable(value.makeNative())
             }
@@ -116,14 +117,16 @@ actual sealed interface LuaValue {
             }
 
         override fun makeNative(): LuaJValue = native
-        actual fun size(): LuaValue = of(native.len(), ref = true)
-        override fun toString(): kotlin.String="TableRef(${native.hashCode().toString(16)})"
+        override val size
+            get() = of(native.len(), ref = true)
+
+        override fun toString(): kotlin.String = "TableRef(${native.hashCode().toString(16)})"
     }
 
     actual class TableValue(val map: HashMap<LuaValue, LuaValue>, override var metatable: LuaValue) : LuaValue,
         Table, Meta {
-        actual override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
-        actual override fun rawSet(key: LuaValue, value: LuaValue) {
+        override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
+        override fun rawSet(key: LuaValue, value: LuaValue) {
             if (value is Nil) {
                 map.remove(key)
             } else {
@@ -144,8 +147,10 @@ actual sealed interface LuaValue {
 
         override val rawSize: Int
             get() = map.size
+        override val size: LuaValue
+            get() = LuaInt(rawSize.toLong())
 
-        actual override fun toMap(): Map<LuaValue, LuaValue> =
+        override fun toMap(): Map<LuaValue, LuaValue> =
             map
     }
 

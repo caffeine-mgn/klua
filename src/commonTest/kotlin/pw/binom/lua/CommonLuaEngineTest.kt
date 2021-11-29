@@ -113,7 +113,7 @@ class CommonLuaEngineTest {
 
         assertEquals(LuaValue.Nil, table.metatable)
         table.metatable=(metatable)
-        println("-->${table.value().toMap()}")
+        println("-->${table.toValue().toMap()}")
         println("-->${table.metatable.checkedTable().toMap()}")
 //        assertEquals("value", ref.getMetatable().checkedTable().rawGet("key".lua).checkedString())
     }
@@ -143,13 +143,13 @@ class CommonLuaEngineTest {
             println("Getting table value...")
             val ref = it[0].checkedTable().checkedTableRef()
             println("\n\n\n---===GETTING VALUE===---")
-            val value = ref.value()
+            val value = ref.toValue()
             println("done! $value")
 
             val meta = value.metatable
             println("\n\n\n---===GETTING META VALUE===---")
             println("metatade-ptr:$meta")
-            val metaRef = meta.checkedTable().checkedTableRef().value()
+            val metaRef = meta.checkedTable().checkedTableRef().toValue()
             println("ref: $metaRef")
             listOf(LuaValue.of("Hello from kotlin.  Got "))
         }
