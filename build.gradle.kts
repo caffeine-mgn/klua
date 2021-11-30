@@ -1,135 +1,94 @@
 import org.jetbrains.kotlin.konan.target.KonanTarget
-import pw.binom.eachKotlinCompile
 import pw.binom.eachKotlinNativeCompile
 import pw.binom.kotlin.clang.BuildStaticTask
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
 }
 
-apply {
-    plugin(pw.binom.plugins.BinomPublishPlugin::class.java)
-}
+apply<pw.binom.plugins.BinomPublishPlugin>()
+
 val luaPackageName = "platform.internal_lua"
-fun getLinkArgs(target: org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget) =
-    listOf("-include-binary", file("${buildDir}/native/${target.konanTarget.name}/liblua.a").absolutePath)
+fun getLinkArgs(target: KotlinNativeTarget) =
+    listOf("-include-binary", file("${buildDir}/native/static/${target.konanTarget.name}/liblua.a").absolutePath)
+
+fun KotlinNativeTarget.configNative() {
+    binaries {
+        compilations["main"].cinterops {
+            create("lua") {
+                defFile = project.file("src/nativeInterop/lua.def")
+                packageName = luaPackageName
+                includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
+            }
+        }
+        compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
+        compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
+    }
+}
 
 kotlin {
+    jvm()
     linuxX64 { // Use your target instead.
         binaries {
             staticLib()
-            compilations["main"].cinterops {
-                create("lua") {
-                    defFile = project.file("src/nativeInterop/lua.def")
-                    packageName = luaPackageName
-                    includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                }
-            }
-            compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
         }
+        configNative()
     }
-    jvm {
-        compilations.all {
-            kotlinOptions {
-//                jvmTarget = "11"
-            }
+    linuxArm32Hfp {
+        binaries {
+            staticLib()
         }
+        configNative()
     }
-    if (pw.binom.Target.LINUX_ARM32HFP_SUPPORT) {
-        linuxArm32Hfp {
-            binaries {
-                staticLib()
-                compilations["main"].cinterops {
-                    create("lua") {
-                        defFile = project.file("src/nativeInterop/lua.def")
-                        packageName = luaPackageName
-                        includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                    }
-                }
-                compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-                compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            }
+    linuxArm64 {
+        binaries {
+            staticLib()
         }
+        configNative()
     }
-
     mingwX64 { // Use your target instead.
         binaries {
             staticLib()
-            compilations["main"].cinterops {
-                create("lua") {
-                    defFile = project.file("src/nativeInterop/lua.def")
-                    packageName = luaPackageName
-                    includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                }
-            }
-            compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
         }
+        configNative()
     }
-    if (pw.binom.Target.MINGW_X86_SUPPORT) {
-        mingwX86 { // Use your target instead.
-            binaries {
-                staticLib()
-                compilations["main"].cinterops {
-                    create("lua") {
-                        defFile = project.file("src/nativeInterop/lua.def")
-                        packageName = luaPackageName
-                        includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                    }
-                }
-                compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-                compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            }
+    mingwX86 { // Use your target instead.
+        binaries {
+            staticLib()
         }
-    }
-    if (pw.binom.Target.LINUX_ARM64_SUPPORT) {
-        linuxArm64 {
-            binaries {
-                staticLib()
-                compilations["main"].cinterops {
-                    create("lua") {
-                        defFile = project.file("src/nativeInterop/lua.def")
-                        packageName = luaPackageName
-                        includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                    }
-                }
-                compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-                compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            }
-        }
-    }
-    if (pw.binom.Target.LINUX_ARM32HFP_SUPPORT) {
-        linuxArm32Hfp {
-            binaries {
-                staticLib()
-                compilations["main"].cinterops {
-                    create("lua") {
-                        defFile = project.file("src/nativeInterop/lua.def")
-                        packageName = luaPackageName
-                        includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                    }
-                }
-                compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-                compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            }
-        }
+        configNative()
     }
 
+    androidNativeArm32 {
+        binaries {
+            staticLib()
+        }
+        configNative()
+    }
+    androidNativeArm64 {
+        binaries {
+            staticLib()
+        }
+        configNative()
+    }
+    androidNativeX86 {
+        binaries {
+            staticLib()
+        }
+        configNative()
+    }
+    androidNativeX64 {
+        binaries {
+            staticLib()
+        }
+        configNative()
+    }
     macosX64 {
         binaries {
-            framework {
-            }
-            compilations["main"].cinterops {
-                create("lua") {
-                    defFile = project.file("src/nativeInterop/nativeSqlite3.def")
-                    packageName = luaPackageName
-                    includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
-                }
-            }
-            compilations["main"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
-            compilations["test"].kotlinOptions.freeCompilerArgs = getLinkArgs(target)
+            framework()
         }
+        configNative()
     }
 
     sourceSets {
@@ -162,11 +121,14 @@ kotlin {
 
         }
 
-        if (pw.binom.Target.LINUX_ARM32HFP_SUPPORT) {
-            val linuxArm32HfpMain by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
+        val linuxArm32HfpMain by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
+            }
+        }
+        val linuxArm64Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
             }
         }
 
@@ -181,17 +143,36 @@ kotlin {
                 dependsOn(linuxX64Main)
             }
         }
+        val androidNativeArm32Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
+            }
+        }
+        val androidNativeArm64Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
+            }
+        }
+        val androidNativeX86Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
+            }
+        }
+        val androidNativeX64Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
+            }
+        }
+
         val mingwX64Test by getting {
             dependencies {
                 dependsOn(linuxX64Test)
             }
         }
 
-        if (pw.binom.Target.MINGW_X86_SUPPORT) {
-            val mingwX86Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
+        val mingwX86Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
             }
         }
 
@@ -220,7 +201,7 @@ allprojects {
     }
 }
 
-fun defineBuild(selectTarget: KonanTarget):BuildStaticTask {
+fun defineBuild(selectTarget: KonanTarget): BuildStaticTask {
     val task = tasks.create("buildLua${selectTarget.name.capitalize()}", BuildStaticTask::class.java)
     task.target = selectTarget
     task.group = "build"
@@ -231,7 +212,7 @@ fun defineBuild(selectTarget: KonanTarget):BuildStaticTask {
         args = null,
         filter = null
     )
-    task.staticFile = file("${buildDir}/native/${selectTarget.name}/liblua.a")
+    task.staticFile = file("${buildDir}/native/static/${selectTarget.name}/liblua.a")
     return task
 }
 tasks {
