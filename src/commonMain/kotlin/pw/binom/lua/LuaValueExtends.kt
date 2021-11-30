@@ -53,10 +53,10 @@ fun LuaValue.checkedBoolean() =
 fun LuaValue.checkedTable() =
     (this as? LuaValue.Table) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Table")
 
-fun LuaValue.Table.checkedTableRef() =
+fun LuaValue.checkedTableRef() =
     (this as? LuaValue.TableRef) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to TableRef")
 
-fun LuaValue.Table.checkedTableValue() =
+fun LuaValue.checkedTableValue() =
     (this as? LuaValue.TableValue) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to TableValue")
 
 fun LuaValue.checkedRef() =

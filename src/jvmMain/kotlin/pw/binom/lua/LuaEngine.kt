@@ -48,8 +48,11 @@ actual class LuaEngine {
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef =
         LuaValue.FunctionRef(value.value)
 
-    actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef =
-        LuaValue.TableRef(value.makeNative() as LuaTable)
+    actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
+        val t = LuaValue.TableRef(value.makeNative() as KLuaTable)
+        t.metatable = value.metatable
+        return t
+    }
 
     actual fun pin(ref: LuaValue.Ref): Boolean = false
 
@@ -62,12 +65,12 @@ actual class LuaEngine {
     }
 
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData =
-        LuaValue.UserData(org.luaj.vm2.LuaValue.userdataOf(value.value))
+        LuaValue.UserData(KLuaUserdata(value.value))
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
         val metatable = LuaTable()
         metatable.rawset("__call", ClosureAdapter(func))
-        return LuaValue.UserData(LuaUserdata(null, metatable))
+        return LuaValue.UserData(KLuaUserdata(AC_CLOSURE_PTR, metatable))
     }
 
     actual fun setAC(userdata: LuaValue.UserData) {
@@ -80,15 +83,22 @@ actual class LuaEngine {
     }
 
     actual fun createAC(value: LuaValue.LightUserData): LuaValue.UserData =
-        LuaValue.UserData(LuaJLightUserdata(value))
+        LuaValue.UserData(KLuaUserdata(value, LuaTable()))
 
     actual fun createAC(value: Any?): LuaValue.UserData =
-        LuaValue.UserData(LuaJLightUserdata(value))
+        LuaValue.UserData(KLuaUserdata(value, LuaTable()))
 }
 
-internal fun Varargs.toCommon() =
-    (1..narg()).map {
-        LuaValue.of(arg(it), ref = true)
+internal val AC_CLOSURE_PTR = Any()
+
+internal fun Varargs.toCommon(): List<LuaValue> {
+    return (1..narg()).mapNotNull {
+        val item = arg(it)
+        if (item is LuaUserdata && item.m_instance === AC_CLOSURE_PTR) {
+            return@mapNotNull null
+        }
+        LuaValue.of(item, ref = true)
     }
+}
 
 internal fun Array<out LuaValue>.toNative() = map { it.makeNative() }.toTypedArray()

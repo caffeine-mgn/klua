@@ -15,7 +15,7 @@ fun LuaState.pushValue(value: LuaValue) {
         is LuaValue.LuaInt -> lua_pushinteger(this, value.value)
         is LuaValue.Boolean -> lua_pushboolean(this, if (value.value) 0 else 1)
         is LuaValue.String -> lua_pushstring(this, value.value)
-        is LuaValue.Ref -> klua_push_value(this, value.ref)//lua_rawgeti(this, LUA_REGISTRYINDEX, value.ref.convert())
+        is LuaValue.Ref -> pushRef(value.ref)//lua_rawgeti(this, LUA_REGISTRYINDEX, value.ref.convert())
         is LuaValue.TableValue -> {
             lua_createtable(this, 0, value.rawSize)
             val table = lua_gettop(this)

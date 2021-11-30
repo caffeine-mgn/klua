@@ -8,7 +8,7 @@ expect class ObjectContainer {
     constructor()
 
     fun makeClosure(func: LuaFunction): LuaValue.FunctionValue
-    fun add(data: Any): LuaValue.LightUserData
+    fun add(data: Any?): LuaValue.LightUserData
 
     /**
      * Remove [data] from Container

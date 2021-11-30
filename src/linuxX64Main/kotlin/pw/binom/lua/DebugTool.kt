@@ -22,13 +22,13 @@ fun LuaState.printStack(message: String? = null) {
         val sb = StringBuilder("$i. type:$typename")
         if (type == LUA_TTABLE) {
             sb.append(" count:${lua_rawlen(this, i)}")
-            sb.append(" ptr:${lua_topointer(this, i)!!.toLong().toString(16)}")
+            sb.append(" ptr:${lua_topointer(this, i).strPtr()}")
         }
         if (type == LUA_TSTRING) {
             sb.append(" value:\"${lua_tostring(this, i)}\"")
         }
         if (type == LUA_TLIGHTUSERDATA || type == LUA_TUSERDATA) {
-            sb.append(" ptr:\"${lua_touserdata(this, i)?.toLong()?.toString(16) ?: "0"}\"")
+            sb.append(" ptr:\"${lua_touserdata(this, i).strPtr()}\"")
         }
         println(sb.toString())
     }

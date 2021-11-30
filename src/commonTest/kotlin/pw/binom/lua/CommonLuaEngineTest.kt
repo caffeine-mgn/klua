@@ -1,5 +1,6 @@
 package pw.binom.lua
 
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -86,7 +87,7 @@ class CommonLuaEngineTest {
     }
 
     @Test
-    fun autoCleanClosureTest() {
+    fun autoCleanClosureTest1() {
         val e = LuaEngine()
         var called = false
         val o = ObjectContainer()
@@ -105,6 +106,46 @@ class CommonLuaEngineTest {
         """
         )
         assertTrue(called)
+    }
+
+    @Test
+    fun autoCleanClosureTest2() {
+        val e = LuaEngine()
+        var argCount = 0
+        e["test"] = e.createACClosure { it ->
+            argCount = it.size
+            emptyList()
+        }
+        e.eval("test(1,2,3)")
+        assertEquals(3, argCount)
+    }
+
+    @Test
+    fun toStringTest() {
+        val e = LuaEngine()
+        val o = ObjectContainer()
+        val TEST_DATA = "Test Data"
+        val toStringFunc = o.makeClosure {
+            listOf(TEST_DATA.lua)
+        }
+
+        e["creator"] = o.makeClosure {
+            val u = e.createAC(o.add(null))
+            u.metatable.checkedTable()["__tostring".lua] = toStringFunc
+
+            val table = LuaValue.TableValue()
+            table.metatable = LuaValue.TableValue("__tostring".lua to toStringFunc)
+            val vv = e.makeRef(table)
+            listOf(u,table)
+        }
+        val res = e.eval("""
+           func, tab = creator()
+           return func, tab, tostring(func), tostring(tab)
+        """)
+        assertEquals(TEST_DATA, res[0].checkedUserdata().callToString())
+        assertEquals(TEST_DATA, res[1].checkedTableRef().callToString())
+        assertEquals(TEST_DATA, res[2].checkedString())
+        assertEquals(TEST_DATA, res[3].checkedString())
     }
 
     @Test

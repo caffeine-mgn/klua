@@ -22,6 +22,7 @@ actual class LuaEngine {
         get() = internalPinned.keys
 
     private val cleaner = createCleaner(state) {
+        println("LuaEngine disposing")
         lua_close(it)
     }
 
@@ -84,17 +85,16 @@ actual class LuaEngine {
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
         state.pushValue(value)
-//        val ref = luaL_ref(state, LUA_REGISTRYINDEX)
-        val ref = klua_get_value(state, -1)!!
-        state.pop(0)
-        return LuaValue.FunctionRef(ref, state)
+        val ptr = lua_topointer(state, -1)!!
+        val ref = state.makeRef(popValue = true)
+        return LuaValue.FunctionRef(ref = ref, ptr = ptr, state = state)
     }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
         state.pushValue(value)
-        val ref = klua_get_value(state, -1)!!
-        state.pop(0)
-        return LuaValue.TableRef(ref = ref, state)
+        val ptr = lua_topointer(state, -1)!!
+        val ref = state.makeRef(popValue = true)
+        return LuaValue.TableRef(ref = ref, ptr = ptr, state = state)
     }
 
     actual fun pin(ref: LuaValue.Ref): Boolean {
@@ -123,20 +123,19 @@ actual class LuaEngine {
             val mem = lua_newuserdata(state, sizeOf<klua_pointer>().convert())!!
             val c = mem.reinterpret<klua_pointer>()
             c.pointed.pointer = value.lightPtr
-            val ret = LuaValue.UserData(klua_get_value(state, -1)!!, state)
-            lua_pop(state, 1)
+            val ret = LuaValue.UserData(state.makeRef(), state)
             return ret
         }
     }
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
         val ref = StableRef.create(func)
-        val luaFunc = LuaValue.FunctionValue(userFunction, listOf(LuaValue.LightUserData(ref.asCPointer())))
+        val luaFunc = LuaValue.FunctionValue(CLOSURE_FUNCTION, listOf(LuaValue.LightUserData(ref.asCPointer())))
         val metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
             "__gc".lua to closureGcRef
         )
-        val userData = createUserData(LuaValue.LightUserData(null))
+        val userData = createUserData(LuaValue.LightUserData(AC_CLOSURE_PTR))
         userData.metatable = metatable
         return userData
     }
@@ -167,7 +166,7 @@ actual class LuaEngine {
     }
 }
 
-fun LuaState.call(vararg args: LuaValue): List<LuaValue> {
+fun LuaState.callClosure(vararg args: LuaValue): List<LuaValue> {
     args.forEach {
         pushValue(it)
     }

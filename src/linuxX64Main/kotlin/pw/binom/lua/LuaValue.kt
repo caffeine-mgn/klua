@@ -1,11 +1,14 @@
+@file:OptIn(ExperimentalStdlibApi::class)
+
 package pw.binom.lua
 
 import kotlinx.cinterop.*
 import platform.internal_lua.*
+import kotlin.native.internal.createCleaner
 
 actual sealed interface LuaValue {
     actual class FunctionValue(val ptr: lua_CFunction?, val upvalues: List<LuaValue>) : LuaValue {
-        override fun toString(): kotlin.String = "Function(${upvalues})"
+        override fun toString(): kotlin.String = "function_value(${ptr.strPtr()}, $upvalues)"
     }
 
     actual interface Data : LuaValue {
@@ -13,8 +16,12 @@ actual sealed interface LuaValue {
         fun dispose()
     }
 
-    actual class UserData(override val ref: CPointer<TValue>, val state: LuaState) : LuaValue, Ref, Callable, Meta,
-        Data {
+    actual class UserData(override val ref: LuaRef, val state: LuaState) : RefObject, Data {
+
+        private val cleaner = createCleaner(state to ref) {
+            it.first.disposeRef(it.second)
+        }
+
         override var metatable: LuaValue
             get() = getMetatable(state, this)
             set(value) {
@@ -23,7 +30,7 @@ actual sealed interface LuaValue {
 
         override fun call(vararg args: LuaValue): List<LuaValue> {
             state.pushValue(this)
-            return state.call(*args)
+            return state.callClosure(*args)
         }
 
         val link: klua_pointer
@@ -51,7 +58,10 @@ actual sealed interface LuaValue {
         actual val toLightUserData: LightUserData
             get() = LightUserData(ptr)
 
-        override fun toString(): kotlin.String = "UserData(${ref.toLong().toString(16)})"
+        override fun callToString() =
+            callToString(state)
+
+        override fun toString(): kotlin.String = "userdata(${ptr.strPtr()})"
     }
 
     actual class LightUserData(var lightPtr: COpaquePointer?) : Data {
@@ -64,7 +74,7 @@ actual sealed interface LuaValue {
             lightPtr = null
         }
 
-        override fun toString(): kotlin.String = "LightUserData(${lightPtr?.toLong()?.toString(16)})"
+        override fun toString(): kotlin.String = "lightuserdata(${lightPtr.strPtr()})"
     }
 
     //    actual class Function(val ptr: lua_CFunction?, val upvalues: List<LuaValue>) : LuaValue
@@ -93,7 +103,7 @@ actual sealed interface LuaValue {
     }
 
     actual sealed interface Ref : LuaValue {
-        val ref: CPointer<TValue>
+        val ref: LuaRef
     }
 
     actual interface Table : LuaValue {
@@ -104,15 +114,22 @@ actual sealed interface LuaValue {
         actual fun rawSet(key: LuaValue, value: LuaValue)
         actual operator fun set(key: LuaValue, value: LuaValue)
         actual operator fun get(key: LuaValue): LuaValue
+        actual fun toValue(): TableValue
     }
 
     actual interface Meta : LuaValue {
         actual var metatable: LuaValue
-//        actual fun getMetatable(): LuaValue
-//        actual fun setMetatable(table: LuaValue)
     }
 
-    actual class TableRef(override val ref: CPointer<TValue>, val state: LuaState) : Ref, Table, Callable, Meta {
+    actual sealed interface RefObject : Ref, Callable, Meta {
+        actual fun callToString(): kotlin.String
+    }
+
+    actual class TableRef(override val ref: LuaRef, val ptr: COpaquePointer, val state: LuaState) : Table, RefObject {
+        private val cleaner = createCleaner(state to ref) {
+            it.first.disposeRef(it.second)
+        }
+
         override operator fun get(key: LuaValue): LuaValue {
             state.checkState {
                 state.pushValue(this)
@@ -181,7 +198,7 @@ actual sealed interface LuaValue {
 
         override fun call(vararg args: LuaValue): List<LuaValue> {
             state.pushValue(this)
-            return state.call(*args)
+            return state.callClosure(*args)
         }
 
         override var metatable: LuaValue
@@ -190,6 +207,9 @@ actual sealed interface LuaValue {
                 setMetatable(state, this, value)
             }
 
+        override fun callToString() =
+            callToString(state)
+
         override fun equals(other: Any?): kotlin.Boolean {
             other ?: return false
             if (this === other) return true
@@ -197,19 +217,19 @@ actual sealed interface LuaValue {
 
             other as TableRef
 
-            if (ref != other.ref) return false
+            if (ptr != other.ptr) return false
 
             return true
         }
 
         override fun hashCode(): Int {
-            return ref.hashCode()
+            return ptr.hashCode()
         }
 
         override fun toString(): kotlin.String =
-            "TableRef(${ref.toLong().toString(16)})"
+            "table(${ptr.strPtr()})"
 
-        actual fun toValue(): TableValue {
+        override fun toValue(): TableValue {
             val t = state.checkState {
                 state.pushValue(this)
                 val result = state.readValue(-1, false)
@@ -225,13 +245,17 @@ actual sealed interface LuaValue {
         actual fun call(vararg args: LuaValue): List<LuaValue>
     }
 
-    actual class FunctionRef(override val ref: CPointer<TValue>, val state: LuaState) : Ref, Callable {
+    actual class FunctionRef(override val ref: LuaRef, val ptr: COpaquePointer, val state: LuaState) : Ref, Callable {
 
-        override fun toString(): kotlin.String = "FunctionRef(${ref.toLong().toString(16)})"
+        private val cleaner = createCleaner(state to ref) {
+            it.first.disposeRef(it.second)
+        }
+
+        override fun toString(): kotlin.String = "function(${ptr.strPtr()})"
 
         actual override fun call(vararg args: LuaValue): List<LuaValue> {
             state.pushValue(this)
-            return state.call(*args)
+            return state.callClosure(*args)
         }
 
         actual fun toValue(): FunctionValue =
@@ -246,23 +270,23 @@ actual sealed interface LuaValue {
             if (other !is FunctionRef) {
                 return false
             }
-            return other.ref === ref
+            return other.ref.id == ref.id
         }
 
-        override fun hashCode(): Int = ref.toLong().toInt()
+        override fun hashCode(): Int = ref.id
     }
 
     actual class TableValue constructor(val map: HashMap<LuaValue, LuaValue>, override var metatable: LuaValue) :
         LuaValue, Table, Meta {
-        actual constructor(map: Map<LuaValue, LuaValue>) : this(HashMap(map), LuaValue.Nil)
+        actual constructor(map: Map<LuaValue, LuaValue>) : this(HashMap(map), Nil)
         actual constructor(vararg keys: Pair<LuaValue, LuaValue>) : this(keys.toMap())
         actual constructor() : this(HashMap())
 
         override fun toString(): kotlin.String =
             if (metatable == Nil) {
-                "TableValue(${toMap()})"
+                "table_value(${toMap()})"
             } else {
-                "TableValue(${toMap()}, metatable: $metatable)"
+                "table_value(${toMap()}, metatable: $metatable)"
             }
 
         override val rawSize: Int
@@ -287,6 +311,8 @@ actual sealed interface LuaValue {
 
         override fun get(key: LuaValue): LuaValue =
             rawGet(key)
+
+        override fun toValue(): TableValue = this
 
         override fun toMap(): Map<LuaValue, LuaValue> = map
     }
@@ -332,6 +358,15 @@ private fun setMetatable(state: LuaState, value: LuaValue.Meta, table: LuaValue)
         state.pop(1)
     }
 }
+
+private fun LuaValue.RefObject.callToString(state: LuaState): kotlin.String =
+    state.checkState {
+        state.pushValue(this)
+        luaL_tolstring(state, -1, null)
+        val result = state.readValue(-1, ref = true)
+        state.pop(2)
+        result.toString()
+    }
 
 private fun COpaquePointer?.toKotlinObject() =
     if (this == null || this.toLong() == 0L) {

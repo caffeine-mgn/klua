@@ -9,9 +9,12 @@ actual class ObjectContainer actual constructor() {
     private val objToPtr = HashMap<Any, COpaquePointer>()
 
     actual fun makeClosure(func: LuaFunction): LuaValue.FunctionValue =
-        LuaValue.FunctionValue(ptr = userFunction, upvalues = listOf(add(func)))
+        LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upvalues = listOf(add(func)))
 
-    actual fun add(data: Any): LuaValue.LightUserData {
+    actual fun add(data: Any?): LuaValue.LightUserData {
+        if (data == null) {
+            return LuaValue.LightUserData(null)
+        }
         val exist = objToPtr[data]
         if (exist != null) {
             return LuaValue.LightUserData(exist)

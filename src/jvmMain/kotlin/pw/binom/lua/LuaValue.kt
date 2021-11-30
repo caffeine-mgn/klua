@@ -12,6 +12,7 @@ actual sealed interface LuaValue {
 
     actual class FunctionValue(val value: LuaFunction) : LuaValue {
         override fun makeNative(): LuaJValue = value
+        override fun toString(): kotlin.String = "function_value(${value.hashCode().toLong().toString(16)})"
     }
 
     actual class FunctionRef(val value: LuaFunction) : Ref, Callable {
@@ -27,7 +28,7 @@ actual sealed interface LuaValue {
         override val native: org.luaj.vm2.LuaValue
             get() = value
 
-        override fun toString(): kotlin.String = "FunctionRef(${value.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "function(${value.hashCode().toString(16)})"
         actual fun toValue(): FunctionValue = FunctionValue(value)
         override fun equals(other: Any?): kotlin.Boolean {
             if (other !is FunctionRef) {
@@ -86,6 +87,7 @@ actual sealed interface LuaValue {
         actual fun rawSet(key: LuaValue, value: LuaValue)
         actual operator fun set(key: LuaValue, value: LuaValue)
         actual operator fun get(key: LuaValue): LuaValue
+        actual fun toValue(): TableValue
     }
 
     actual sealed interface Ref : LuaValue {
@@ -100,8 +102,12 @@ actual sealed interface LuaValue {
         actual var metatable: LuaValue
     }
 
-    actual class TableRef(override val native: org.luaj.vm2.LuaTable) : Ref, Table, Callable, Meta {
-        actual fun toValue(): TableValue =
+    actual sealed interface RefObject : Ref, Callable, Meta {
+        actual fun callToString(): kotlin.String
+    }
+
+    actual class TableRef(override val native: LuaTable) : Table, RefObject {
+        override fun toValue(): TableValue =
             TableValue(native.toMap(), metatable)
 
         override val rawSize: Int
@@ -134,11 +140,14 @@ actual sealed interface LuaValue {
                 throw LuaException(e.message)
             }
 
+        override fun callToString(): kotlin.String =
+            native.tostring().checkjstring()
+
         override fun makeNative(): LuaJValue = native
         override val size
             get() = of(native.len(), ref = true)
 
-        override fun toString(): kotlin.String = "TableRef(${native.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "table(${native.hashCode().toString(16)})"
     }
 
     actual class TableValue(val map: HashMap<LuaValue, LuaValue>, override var metatable: LuaValue) : LuaValue,
@@ -159,16 +168,24 @@ actual sealed interface LuaValue {
         override fun get(key: LuaValue): LuaValue =
             rawGet(key)
 
-        override fun makeNative(): org.luaj.vm2.LuaValue =
-            map.toNative()
+        override fun toValue(): TableValue = this
+
+        override fun makeNative(): org.luaj.vm2.LuaValue {
+            val t = map.toNative()
+            t.setmetatable(metatable.makeNative())
+            return t
+        }
 
         actual constructor(map: Map<LuaValue, LuaValue>) : this(HashMap(map), Nil)
         actual constructor(vararg keys: Pair<LuaValue, LuaValue>) : this(keys.toMap())
         actual constructor() : this(emptyMap())
 
-        override fun toString(): kotlin.String {
-            return toMap().toString()
-        }
+        override fun toString(): kotlin.String =
+            if (metatable == Nil) {
+                "table_value(${toMap()})"
+            } else {
+                "table_value(${toMap()}, metatable: $metatable)"
+            }
 
         override val rawSize: Int
             get() = map.size
@@ -183,7 +200,7 @@ actual sealed interface LuaValue {
         actual val value: Any?
     }
 
-    actual class UserData(override val native: LuaUserdata) : LuaValue, Ref, Callable, Meta, Data {
+    actual class UserData(override val native: LuaUserdata) : RefObject, Data {
         override fun call(vararg args: LuaValue): List<LuaValue> =
             try {
                 native.invoke(args.toNative()).toCommon()
@@ -203,14 +220,15 @@ actual sealed interface LuaValue {
         actual val toLightUserData: LightUserData
             get() = LightUserData(value)
 
-        override fun toString(): kotlin.String = "UserData(${native.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "userdata(${native.hashCode().toString(16)})"
+        override fun callToString(): kotlin.String = native.tostring().checkjstring()
     }
 
     actual class LightUserData(override val value: Any?) : Data {
         override fun makeNative(): org.luaj.vm2.LuaValue =
             LuaJLightUserdata(value)
 
-        override fun toString(): kotlin.String = "UserData(${value?.hashCode()?.toString(16) ?: 0})"
+        override fun toString(): kotlin.String = "lightuserdata(${value?.hashCode()?.toString(16) ?: 0})"
     }
 
     actual companion object {
@@ -258,11 +276,12 @@ actual sealed interface LuaValue {
 }
 
 internal fun Map<LuaValue, LuaValue>.toNative(): LuaTable {
-    val t = LuaTable(0, size)
-    forEach {
-        t.rawset(it.key.makeNative(), it.value.makeNative())
-    }
-    return t
+    val named = entries.flatMap { listOf(it.key.makeNative(), it.value.makeNative()) }.toTypedArray()
+    return KLuaTable(named, emptyArray())
+//    forEach {
+//        t.rawset(it.key.makeNative(), it.value.makeNative())
+//    }
+//    return t
 }
 
 internal fun LuaTable.toMap(): HashMap<LuaValue, LuaValue> {

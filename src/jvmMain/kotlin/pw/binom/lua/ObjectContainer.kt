@@ -7,7 +7,7 @@ actual class ObjectContainer actual constructor() {
         return LuaValue.FunctionValue(e)
     }
 
-    actual fun add(data: Any): LuaValue.LightUserData {
+    actual fun add(data: Any?): LuaValue.LightUserData {
         return LuaValue.LightUserData(data)
     }
 

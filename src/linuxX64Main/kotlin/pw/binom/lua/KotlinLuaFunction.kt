@@ -1,27 +1,42 @@
 package pw.binom.lua
 
-import kotlinx.cinterop.asStableRef
 import kotlinx.cinterop.staticCFunction
 import platform.internal_lua.luaL_error
 import platform.internal_lua.lua_gettop
 
-val userFunction = staticCFunction<LuaState?, Int> { state ->
+internal val AC_CLOSURE_PTR = staticCFunction<Unit> {
+//Do nothing
+}
+
+private fun callClosure(skipClosureUserData: Boolean, state: LuaState): Int {
+    val value = state!!.readValue(lua_upvalueindex(1), false).checkedData()
+    val func = value.value<LuaFunction>()
+    val count = lua_gettop(state)
+    val args = (1..count).mapNotNull {
+        val arg = state.readValue(it, true)
+        if (arg is LuaValue.UserData && arg.ptr == AC_CLOSURE_PTR)
+            return@mapNotNull null
+        arg
+    }
+    lua_pop(state, count)
+    val result = func.call(
+        req = args,
+    )
+    result.forEach {
+        state.pushValue(it)
+    }
+    return result.size
+}
+
+//val AC_CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
+//    callClosure(true, state!!)
+//}
+
+val CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
     try {
-        val value = state!!.readValue(lua_upvalueindex(1), false).checkedData()
-        val func = value.value<LuaFunction>()!!
-        val count = lua_gettop(state)
-        val args = (1..count).map {
-            state.readValue(it, true)
-        }
-        lua_pop(state, count)
-        val result = func.call(
-            req = args,
-        )
-        result.forEach {
-            state.pushValue(it)
-        }
-        result.size
+        callClosure(true, state!!)
     } catch (e: Throwable) {
+        e.printStackTrace()
         luaL_error(state, e.toString())
         0
     }

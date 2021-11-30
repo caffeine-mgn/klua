@@ -13,7 +13,7 @@ class ObjectContainerTest {
             //Do nothing
             emptyList()
         }
-        assertEquals(userFunction, myFunc.ptr)
+        assertEquals(CLOSURE_FUNCTION, myFunc.ptr)
         assertEquals(1, myFunc.upvalues.size)
     }
 

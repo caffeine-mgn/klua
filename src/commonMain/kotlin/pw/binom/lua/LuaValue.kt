@@ -12,7 +12,7 @@ expect sealed interface LuaValue {
         val value: Any?
     }
 
-    class UserData : LuaValue, Ref, Callable, Meta, Data {
+    class UserData : RefObject, Data {
         val toLightUserData: LightUserData
     }
 
@@ -53,9 +53,14 @@ expect sealed interface LuaValue {
         fun rawSet(key: LuaValue, value: LuaValue)
         operator fun set(key: LuaValue, value: LuaValue)
         operator fun get(key: LuaValue): LuaValue
+        fun toValue(): TableValue
     }
 
     sealed interface Ref : LuaValue
+
+    sealed interface RefObject : Ref, Callable, Meta {
+        fun callToString(): kotlin.String
+    }
 
     class TableValue : LuaValue, Table, Meta {
         constructor(map: Map<LuaValue, LuaValue>)
@@ -63,8 +68,7 @@ expect sealed interface LuaValue {
         constructor()
     }
 
-    class TableRef : Ref, Table, Callable, Meta {
-        fun toValue(): TableValue
+    class TableRef : Table, RefObject {
     }
 
     class FunctionRef : Ref, Callable {
