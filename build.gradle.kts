@@ -1,6 +1,6 @@
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import pw.binom.eachKotlinNativeCompile
-import pw.binom.kotlin.clang.BuildStaticTask
+import pw.binom.kotlin.clang.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
@@ -11,7 +11,7 @@ apply<pw.binom.plugins.BinomPublishPlugin>()
 
 val luaPackageName = "platform.internal_lua"
 fun getLinkArgs(target: KotlinNativeTarget) =
-    listOf("-include-binary", file("${buildDir}/native/static/${target.konanTarget.name}/liblua.a").absolutePath)
+        listOf("-include-binary", file("${buildDir}/native/static/${target.konanTarget.name}/liblua.a").absolutePath)
 
 fun KotlinNativeTarget.configNative() {
     binaries {
@@ -33,64 +33,82 @@ kotlin {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     linuxArm32Hfp {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     linuxArm64 {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     mingwX64 { // Use your target instead.
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     mingwX86 { // Use your target instead.
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
 
     androidNativeArm32 {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     androidNativeArm64 {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     androidNativeX86 {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     androidNativeX64 {
         binaries {
             staticLib()
         }
-        configNative()
+//        configNative()
     }
     macosX64 {
         binaries {
             framework()
         }
-        configNative()
+//        configNative()
     }
-
+    eachNative {
+        val luaTask = clangBuildStatic(target = konanTarget, name = "lua") {
+            compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
+            compileDir(
+                    sourceDir = file("${buildFile.parentFile}/src/nativeMain/lua"),
+            )
+        }
+        tasks.findByName(compileTaskName)?.dependsOn(luaTask)
+        binaries {
+            compilations["main"].cinterops {
+                create("lua") {
+                    defFile = project.file("src/nativeInterop/lua.def")
+                    packageName = luaPackageName
+                    includeDirs.headerFilterOnly("${buildFile.parent}/src/nativeMain/lua")
+                }
+            }
+            compilations["main"].addStatic(luaTask.staticFile)
+        }
+    }
     sourceSets {
 
         val commonMain by getting {
@@ -201,25 +219,25 @@ allprojects {
     }
 }
 
-fun defineBuild(selectTarget: KonanTarget): BuildStaticTask {
-    val task = tasks.create("buildLua${selectTarget.name.capitalize()}", BuildStaticTask::class.java)
-    task.target = selectTarget
-    task.group = "build"
-    task.compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
-    task.compileDir(
-        sourceDir = file("${buildFile.parentFile}/src/nativeMain/lua"),
-        objectDir = file("${buildDir}/native/o/${selectTarget.name}"),
-        args = null,
-        filter = null
-    )
-    task.staticFile = file("${buildDir}/native/static/${selectTarget.name}/liblua.a")
-    return task
-}
-tasks {
-    eachKotlinNativeCompile {
-        val buildTask = defineBuild(KonanTarget.predefinedTargets[it.target]!!)
-        it.dependsOn(buildTask)
-    }
-}
+//fun defineBuild(selectTarget: KonanTarget): BuildStaticTask {
+//    val task = tasks.create("buildLua${selectTarget.name.capitalize()}", BuildStaticTask::class.java)
+//    task.target = selectTarget
+//    task.group = "build"
+//    task.compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
+//    task.compileDir(
+//        sourceDir = file("${buildFile.parentFile}/src/nativeMain/lua"),
+//        objectDir = file("${buildDir}/native/o/${selectTarget.name}"),
+//        args = null,
+//        filter = null
+//    )
+//    task.staticFile.set(file("${buildDir}/native/static/${selectTarget.name}/liblua.a"))
+//    return task
+//}
+//tasks {
+//    eachKotlinNativeCompile {
+//        val buildTask = defineBuild(KonanTarget.predefinedTargets[it.target]!!)
+//        it.dependsOn(buildTask)
+//    }
+//}
 
 apply<pw.binom.plugins.DocsPlugin>()
