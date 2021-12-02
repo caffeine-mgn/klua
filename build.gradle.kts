@@ -80,9 +80,6 @@ kotlin {
             framework()
         }
     }
-    wasm32 {
-        this.l
-    }
 
     eachNative {
         val srcDir = file("${buildFile.parentFile}/src/nativeMain/lua")
