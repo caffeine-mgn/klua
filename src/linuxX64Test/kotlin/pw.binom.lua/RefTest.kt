@@ -11,14 +11,31 @@ class RefTest {
 
     @Test
     fun pushGetReference() {
-        val e = LuaEngine()
-        e.state.pushValue(LuaValue.TableValue())
-        assertEquals(LUA_TTABLE, e.state.type(-1))
-        val tablePtr = lua_topointer(e.state, -1)!!.toLong()
-        val ref = e.state.makeRef()
-        assertEquals(0, lua_gettop(e.state))
-        e.state.pushRef(ref)
-        assertEquals(LUA_TTABLE, e.state.type(-1))
-        assertEquals(tablePtr, lua_topointer(e.state, -1)!!.toLong())
+        println("Try execute...")
+        try {
+            println("#0")
+            val e = LuaEngine(LuaLib.NATIVE)
+            println("#1")
+            e.ll.pushValue(LuaValue.TableValue())
+            println("#2")
+            assertEquals(LUA_TTABLE, e.ll.type(-1))
+            println("#3")
+            val tablePtr = lua_topointer(e.state, -1)!!.toLong()
+            println("#4")
+            val ref = e.ll.makeRef()
+            println("#5")
+            assertEquals(0, lua_gettop(e.state))
+            println("#6")
+            e.ll.pushRef(ref)
+            println("#7")
+            assertEquals(LUA_TTABLE, e.ll.type(-1))
+            println("#8")
+            assertEquals(tablePtr, lua_topointer(e.state, -1)!!.toLong())
+            println("#9")
+        } catch (e:Throwable) {
+            e.printStackTrace()
+//            throw e
+        }
+        println("Finished")
     }
 }

@@ -1,7 +1,6 @@
 package pw.binom.lua
-
+expect fun createLuaEngine():LuaEngine
 expect class LuaEngine {
-    constructor()
 
     fun eval(text: String): List<LuaValue>
 

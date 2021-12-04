@@ -5,7 +5,7 @@ package pw.binom.lua
 import kotlinx.cinterop.*
 import platform.internal_lua.*
 import kotlin.native.internal.createCleaner
-
+actual fun createLuaEngine():LuaEngine = LuaEngine(LuaLib.NATIVE)
 //class LuaEngine1 {
 //
 //    val state: LuaState = luaL_newstate()!!

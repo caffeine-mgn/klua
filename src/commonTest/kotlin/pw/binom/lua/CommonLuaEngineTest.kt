@@ -11,7 +11,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun callTest() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         var called = false
         val closure = o.makeClosure {
@@ -24,7 +24,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun globalTest() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         e["test"] = LuaValue.of("Kotlin")
         assertEquals("Kotlin", e["test"].checkedString())
         assertTrue(e["test2"].isNil)
@@ -32,7 +32,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun evalTest() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val result = e.eval("return 123,456")
         assertEquals(2, result.size)
         assertEquals(123.0, result[0].checkedNumber())
@@ -41,7 +41,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun getFromTableRef() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         e["test"] = o.makeClosure {
             val table = it[0].checkedTable()
@@ -71,7 +71,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun testAutoCleanUserData() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         e["create"] = o.makeClosure {
             listOf(
@@ -88,7 +88,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun autoCleanClosureTest1() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         var called = false
         val o = ObjectContainer()
         e["make_function"] = o.makeClosure {
@@ -110,7 +110,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun autoCleanClosureTest2() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         var argCount = 0
         e["test"] = e.createACClosure { it ->
             argCount = it.size
@@ -122,7 +122,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun toStringTest() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         val TEST_DATA = "Test Data"
         val toStringFunc = o.makeClosure {
@@ -154,7 +154,7 @@ class CommonLuaEngineTest {
         val N2 = 10
         val N3 = 15
 
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         val obj = MyObject(N1)
         val lightUserData = o.add(obj)
@@ -171,7 +171,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun callPassedFunctionTest() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         var called = false
         e["for_call"] = o.makeClosure {
@@ -198,7 +198,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun refFuncCall() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         var called = false
         val ref = e.makeRef(o.makeClosure {
@@ -212,7 +212,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun throwException() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val c = ObjectContainer()
         e["throw_exception"] = c.makeClosure {
             throw RuntimeException("My message")
@@ -228,7 +228,7 @@ class CommonLuaEngineTest {
     @Test
     fun errorCatching() {
         try {
-            val e = LuaEngine()
+            val e = createLuaEngine()
             e.eval("fff()")
             fail("Lua should throw exception")
         } catch (e: LuaException) {
@@ -238,7 +238,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun metatableTest() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val o = ObjectContainer()
         val metatable = e.makeRef(LuaValue.of(mapOf("key".lua to "value".lua)))
         val table = e.makeRef(LuaValue.of(mapOf("foo".lua to "bar".lua)))
@@ -252,7 +252,7 @@ class CommonLuaEngineTest {
 
     @Test
     fun test() {
-        val e = LuaEngine()
+        val e = createLuaEngine()
         val c = ObjectContainer()
 
 
