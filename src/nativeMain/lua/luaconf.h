@@ -10,6 +10,10 @@
 
 #include <limits.h>
 #include <stddef.h>
+#ifdef EMSCRIPTEN
+    #include <emscripten.h>
+#endif
+
 
 
 /*
@@ -282,9 +286,17 @@
 #if defined(LUA_BUILD_AS_DLL)	/* { */
 
 #if defined(LUA_CORE) || defined(LUA_LIB)	/* { */
-#define LUA_API __declspec(dllexport)
+    #ifdef __EMSCRIPTEN__
+        #define LUA_API EMSCRIPTEN_KEEPALIVE
+    #else
+        #define LUA_API __declspec(dllexport)
+    #endif
 #else						/* }{ */
-#define LUA_API __declspec(dllimport)
+    #ifdef __EMSCRIPTEN__
+        #define LUA_API
+    #else
+        #define LUA_API __declspec(dllimport)
+    #endif
 #endif						/* } */
 
 #else				/* }{ */

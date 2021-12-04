@@ -73,54 +73,6 @@ static void usage(const char* message)
 
 #define IS(s)	(strcmp(argv[i],s)==0)
 
-static int doargs(int argc, char* argv[])
-{
- int i;
- int version=0;
- if (argv[0]!=NULL && *argv[0]!=0) progname=argv[0];
- for (i=1; i<argc; i++)
- {
-  if (*argv[i]!='-')			/* end of options; keep it */
-   break;
-  else if (IS("--"))			/* end of options; skip it */
-  {
-   ++i;
-   if (version) ++version;
-   break;
-  }
-  else if (IS("-"))			/* end of options; use stdin */
-   break;
-  else if (IS("-l"))			/* list */
-   ++listing;
-  else if (IS("-o"))			/* output file */
-  {
-   output=argv[++i];
-   if (output==NULL || *output==0 || (*output=='-' && output[1]!=0))
-    usage("'-o' needs argument");
-   if (IS("-")) output=NULL;
-  }
-  else if (IS("-p"))			/* parse only */
-   dumping=0;
-  else if (IS("-s"))			/* strip debug information */
-   stripping=1;
-  else if (IS("-v"))			/* show version */
-   ++version;
-  else					/* unknown option */
-   usage(argv[i]);
- }
- if (i==argc && (listing || !dumping))
- {
-  dumping=0;
-  argv[--i]=Output;
- }
- if (version)
- {
-  printf("%s\n",LUA_COPYRIGHT);
-  if (version==argc-1) exit(EXIT_SUCCESS);
- }
- return i;
-}
-
 #define FUNCTION "(function()end)();"
 
 static const char* reader(lua_State* L, void* ud, size_t* size)
@@ -164,50 +116,6 @@ static int writer(lua_State* L, const void* p, size_t size, void* u)
 {
  UNUSED(L);
  return (fwrite(p,size,1,(FILE*)u)!=1) && (size!=0);
-}
-
-static int pmain(lua_State* L)
-{
- int argc=(int)lua_tointeger(L,1);
- char** argv=(char**)lua_touserdata(L,2);
- const Proto* f;
- int i;
- tmname=G(L)->tmname;
- if (!lua_checkstack(L,argc)) fatal("too many input files");
- for (i=0; i<argc; i++)
- {
-  const char* filename=IS("-") ? NULL : argv[i];
-  if (luaL_loadfile(L,filename)!=LUA_OK) fatal(lua_tostring(L,-1));
- }
- f=combine(L,argc);
- if (listing) luaU_print(f,listing>1);
- if (dumping)
- {
-  FILE* D= (output==NULL) ? stdout : fopen(output,"wb");
-  if (D==NULL) cannot("open");
-  lua_lock(L);
-  luaU_dump(L,f,writer,D,stripping);
-  lua_unlock(L);
-  if (ferror(D)) cannot("write");
-  if (fclose(D)) cannot("close");
- }
- return 0;
-}
-
-int main(int argc, char* argv[])
-{
- lua_State* L;
- int i=doargs(argc,argv);
- argc-=i; argv+=i;
- if (argc<=0) usage("no input files given");
- L=luaL_newstate();
- if (L==NULL) fatal("cannot create state: not enough memory");
- lua_pushcfunction(L,&pmain);
- lua_pushinteger(L,argc);
- lua_pushlightuserdata(L,argv);
- if (lua_pcall(L,2,0,0)!=LUA_OK) fatal(lua_tostring(L,-1));
- lua_close(L);
- return EXIT_SUCCESS;
 }
 
 /*

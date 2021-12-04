@@ -13,10 +13,12 @@ expect sealed interface LuaValue {
     }
 
     class UserData : RefObject, Data {
+        override var metatable: LuaValue
         val toLightUserData: LightUserData
     }
 
     class LightUserData : Data {
+        override val value: Any?
     }
 
     class LuaInt : LuaValue {
@@ -63,12 +65,15 @@ expect sealed interface LuaValue {
     }
 
     class TableValue : LuaValue, Table, Meta {
+        override var metatable: LuaValue
         constructor(map: Map<LuaValue, LuaValue>)
         constructor(vararg keys: Pair<LuaValue, LuaValue>)
         constructor()
     }
 
     class TableRef : Table, RefObject {
+        override var metatable: LuaValue
+        override fun call(vararg args: LuaValue): List<LuaValue>
     }
 
     class FunctionRef : Ref, Callable {

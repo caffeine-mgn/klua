@@ -16,7 +16,7 @@ class LuaEngineTest {
 
         e["test"] = o.makeClosure {
             assertEquals(3, it.size)
-            stackSize = lua_gettop(e.state)
+            stackSize = e.ll.lib.lua_gettop1(e.state)
             emptyList()
         }
 

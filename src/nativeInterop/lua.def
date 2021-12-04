@@ -7,7 +7,12 @@ headerFilter = *.h
 ---
 #include "lapi.h"
 #include "lobject.h"
+#include <string.h>
 
 typedef struct {
   void* pointer;
 } klua_pointer;
+
+
+void aa(){
+}

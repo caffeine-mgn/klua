@@ -17,7 +17,7 @@ class LuaValueTest {
         val myFunc = m.makeClosure {
             emptyList()
         }
-        e.state.pushValue(myFunc)
+        e.ll.pushValue(myFunc)
         assertEquals(1, lua_gettop(e.state))
         assertEquals(LUA_TFUNCTION, lua_type(e.state, 1))
     }
@@ -27,7 +27,7 @@ class LuaValueTest {
         val e = LuaEngine()
         val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
         val table = LuaValue.of(mapOf(1.lua to 2.lua), metatable)
-        e.state.pushValue(table)
+        e.ll.pushValue(table)
         assertEquals(1, lua_gettop(e.state))
         assertEquals(LUA_TTABLE, lua_type(e.state, 1))
     }
@@ -37,8 +37,8 @@ class LuaValueTest {
         val e = LuaEngine()
         val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
         val table = LuaValue.of(mapOf(1.lua to 2.lua), metatable)
-        e.state.pushValue(table)
-        e.state.readValue(1,false)
+        e.ll.pushValue(table)
+        e.ll.readValue(1,false)
         assertEquals(1, lua_gettop(e.state))
     }
 
@@ -118,8 +118,8 @@ class LuaValueTest {
         val myFunc = m.makeClosure {
             emptyList()
         }
-        e.state.pushValue(myFunc)
-        val func = e.state.readValue(1,false)
+        e.ll.pushValue(myFunc)
+        val func = e.ll.readValue(1,false)
         assertTrue(func is LuaValue.FunctionValue)
     }
 }
