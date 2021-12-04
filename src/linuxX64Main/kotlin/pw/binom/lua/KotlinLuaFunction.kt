@@ -10,17 +10,18 @@ actual val AC_CLOSURE_PTR = staticCFunction<Unit> {
 }
 
 private fun callClosure(skipClosureUserData: Boolean, state: LuaState): Int {
-    val ll = LuaStateAndLib(state,LuaLib.NATIVE)
-    val value = ll.readValue(LuaLib.NATIVE.lua_upvalueindex1(1), false).checkedData()
+    val ll = LuaStateAndLib(state, LUALIB_INSTANCE)
+    val value = ll.readValue(LUALIB_INSTANCE.lua_upvalueindex1(1), false).checkedData()
     val func = value.value<LuaFunction>()
     val count = lua_gettop(state)
     val args = (1..count).mapNotNull {
         val arg = ll.readValue(it, true)
-        if (arg is LuaValue.UserData && arg.ptr == AC_CLOSURE_PTR)
+        if (arg is LuaValue.UserData && arg.ptr == AC_CLOSURE_PTR) {
             return@mapNotNull null
+        }
         arg
     }
-    LuaLib.NATIVE.lua_pop1(state, count)
+    LUALIB_INSTANCE.lua_pop1(state, count)
     val result = func.call(
         req = args,
     )
@@ -47,7 +48,7 @@ actual val CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
 actual val closureGc = staticCFunction<LuaState?, Int> { state ->
     try {
         check(lua_gettop(state) == 1) { "Invalid arguments" }
-        val ll = LuaStateAndLib(state!!,LuaLib.NATIVE)
+        val ll = LuaStateAndLib(state!!,LUALIB_INSTANCE)
         val userData = ll.readValue(-1, false).checkedUserdata()
         val funcValue = userData.metatable.checkedTable()["__call".lua].checkedFunctionRef().toValue()
         check(funcValue.upvalues.size == 1) { "Invalid upvalues state" }
@@ -62,7 +63,7 @@ actual val closureGc = staticCFunction<LuaState?, Int> { state ->
 actual val userdataGc = staticCFunction<LuaState?, Int> { state ->
     try {
         check(lua_gettop(state) == 1) { "Invalid arguments" }
-        val ll = LuaStateAndLib(state!!,LuaLib.NATIVE)
+        val ll = LuaStateAndLib(state!!,LUALIB_INSTANCE)
         val userData = ll.readValue(-1, false).checkedUserdata()
         userData.dispose()
         0

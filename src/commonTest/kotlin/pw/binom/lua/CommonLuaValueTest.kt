@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 class CommonLuaValueTest {
     @Test
     fun readTable() {
-        val e = createLuaEngine()
+        val e = LuaEngine()
         e["test"] = LuaValue.of(mapOf(1.0.lua to 2.0.lua))
         val table = e["test"]
         val m = table.checkedTable()

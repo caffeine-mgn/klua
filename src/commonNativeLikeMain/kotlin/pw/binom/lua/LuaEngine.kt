@@ -1,46 +1,69 @@
 package pw.binom.lua
 
-actual class LuaEngine internal constructor(lib: LuaLib) {
-    //    private val luaLib: LuaLib
-//        get() = TODO()
+actual class LuaEngine actual constructor(){
+    init {
+        println("LuaEngine #1")
+    }
 
-    internal val ll=LuaStateAndLib(lib.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"),lib)
-    val state: LuaState
-        get() = ll.state
-
+    internal val ll = LuaStateAndLib(LUALIB_INSTANCE.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"), LUALIB_INSTANCE)
 
     init {
-        ll.lib.luaL_openlibs1(state)
+        println("LuaEngine #2")
+    }
+
+    init {
+        ll.lib.luaL_openlibs1(ll.state)
+    }
+
+    init {
+        println("LuaEngine #3")
     }
 
     private var closureGcRef = makeRef(LuaValue.FunctionValue(closureGc, upvalues = emptyList()))
+
+    init {
+        println("LuaEngine #4")
+    }
+
     private var userdataGcRef = makeRef(LuaValue.FunctionValue(userdataGc, upvalues = emptyList()))
+
+    init {
+        println("LuaEngine #5")
+    }
 
     private var internalPinned = HashMap<LuaValue.Ref, Int>()
     actual val pinned: Set<LuaValue.Ref>
         get() = internalPinned.keys
 
-    private val cleaner = createCleaner1(state) {
+    private val cleaner = createCleaner1(ll.state) {
         println("LuaEngine disposing")
         ll.lib.lua_close1(it)
     }
 
     actual operator fun get(name: String): LuaValue {
-        ll.lib.lua_getglobal1(state, name)
-        return ll.readValue(-1, true)
+        ll.checkState {
+            printStack("before-get-global")
+            ll.lib.lua_getglobal1(ll.state, name)
+            printStack("after-get-global")
+            val value = ll.readValue(-1, true)
+            ll.pop(1)
+            return value
+        }
     }
 
     actual operator fun set(name: String, value: LuaValue) {
-        ll.pushValue(value)
-        ll.lib.lua_setglobal1(state, name)
+        ll.checkState {
+            ll.pushValue(value)
+            ll.lib.lua_setglobal1(ll.state, name)
+        }
     }
 
     actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
-        val r = ll.lib.luaL_loadstring1(state, text)
+        val r = ll.lib.luaL_loadstring1(ll.state, text)
         when (r) {
             0 -> {}
             LUA_ERRSYNTAX1 -> {
-                val msg = ll.lib.lua_tostring1(state, -1)
+                val msg = ll.lib.lua_tostring1(ll.state, -1)
                 ll.pop(1)
                 throw LuaException(msg ?: "Compile error")
             }
@@ -52,48 +75,58 @@ actual class LuaEngine internal constructor(lib: LuaLib) {
     }
 
     actual fun call(
-            functionName: String,
-            vararg args: LuaValue
+        functionName: String,
+        vararg args: LuaValue
     ): List<LuaValue> {
-        ll.lib.lua_getglobal1(state, functionName)
-        if (ll.lib.lua_isnil1(state, -1)) {
+        ll.lib.lua_getglobal1(ll.state, functionName)
+        if (ll.lib.lua_isnil1(ll.state, -1)) {
             throw LuaException("Function \"$functionName\" not found")
         }
-        if (!ll.lib.lua_isfunction1(state, -1)) {
+        if (!ll.lib.lua_isfunction1(ll.state, -1)) {
             ll.pop(1)
             throw LuaException("\"$functionName\" is not a function")
         }
         args.forEach {
             ll.pushValue(it)
         }
-        val exec = ll.lib.lua_pcall1(state, args.size, LUA_MULTRET1, 0)
+        val exec = ll.lib.lua_pcall1(ll.state, args.size, LUA_MULTRET1, 0)
         return pcallProcessing(ll, exec)
     }
 
     actual fun call(
-            value: LuaValue,
-            vararg args: LuaValue
+        value: LuaValue,
+        vararg args: LuaValue
     ): List<LuaValue> {
         ll.pushValue(value)
         args.forEach {
             ll.pushValue(it)
         }
-        val exec = ll.lib.lua_pcall1(state, args.size, LUA_MULTRET1, 0)
+        val exec = ll.lib.lua_pcall1(ll.state, args.size, LUA_MULTRET1, 0)
         return pcallProcessing(ll, exec)
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
-        ll.pushValue(value)
-        val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
-        val ref = ll.makeRef(popValue = true)
-        return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
+        ll.checkState {
+            println("LuaEngine-makeRef #1   ${value}")
+            ll.pushValue(value)
+            println("LuaEngine-makeRef #2  ll.state=${ll.state}")
+            println("top=${ll.lib.lua_gettop1(ll.state)}")
+            printStack()
+            val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
+            println("LuaEngine-makeRef #3")
+            val ref = ll.makeRef(popValue = true)
+            println("LuaEngine-makeRef #4")
+            return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
+        }
     }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
-        ll.pushValue(value)
-        val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
-        val ref = ll.makeRef(popValue = true)
-        return LuaValue.TableRef(ref = ref, ptr = ptr, ll = ll)
+        ll.checkState {
+            ll.pushValue(value)
+            val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
+            val ref = ll.makeRef(popValue = true)
+            return LuaValue.TableRef(ref = ref, ptr = ptr, ll = ll)
+        }
     }
 
     actual fun pin(ref: LuaValue.Ref): Boolean {
@@ -130,8 +163,8 @@ actual class LuaEngine internal constructor(lib: LuaLib) {
         val ref = StableRef1.create(func)
         val luaFunc = LuaValue.FunctionValue(CLOSURE_FUNCTION, listOf(LuaValue.LightUserData(ref.asCPointer())))
         val metatable = LuaValue.TableValue(
-                "__call".lua to luaFunc,
-                "__gc".lua to closureGcRef
+            "__call".lua to luaFunc,
+            "__gc".lua to closureGcRef
         )
         val userData = createUserData(LuaValue.LightUserData(AC_CLOSURE_PTR))
         userData.metatable = metatable
@@ -183,13 +216,14 @@ private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue
             return list
         }
         LUA_ERRRUN1 -> {
-            val message = if (luaLib.lib.lua_gettop1(luaLib.state) == 1 && luaLib.lib.lua_isstring1(luaLib.state, 1) != 0) {
-                val str = luaLib.lib.lua_tostring1(luaLib.state, 1)
-                luaLib.pop(1)
-                str
-            } else {
-                null
-            }
+            val message =
+                if (luaLib.lib.lua_gettop1(luaLib.state) == 1 && luaLib.lib.lua_isstring1(luaLib.state, 1) != 0) {
+                    val str = luaLib.lib.lua_tostring1(luaLib.state, 1)
+                    luaLib.pop(1)
+                    str
+                } else {
+                    null
+                }
             luaLib.lib.luaL_traceback1(luaLib.state, luaLib.state, message, 1)
             val fullMessage = luaLib.lib.lua_tostring1(luaLib.state, -1)
             luaLib.pop(1)

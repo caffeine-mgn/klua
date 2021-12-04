@@ -5,10 +5,11 @@ internal expect class LuaLib {
     fun luaL_newstate1(): LuaState?
     fun luaL_openlibs1(state: LuaState)
     fun lua_getglobal1(state: LuaState, name: String): Int
-    fun lua_setglobal1(state: LuaState, name: String): Int
+    fun lua_setglobal1(state: LuaState, name: String)
     fun lua_close1(state: LuaState)
     fun lua_gettop1(state: LuaState): Int
     fun lua_tostring1(state: LuaState, i: Int): String?
+    fun luaL_tolstring1(state: LuaState, i: Int): String?
     fun luaL_ref1(state: LuaState, t: Int): Int
     fun luaL_unref1(state: LuaState, t: Int, ref: Int)
     fun lua_isstring1(state: LuaState, idx: Int): Int
@@ -42,7 +43,9 @@ internal expect class LuaLib {
     fun lua_gettable1(L: LuaState?, idx: Int): Int
     fun lua_rawget1(L: LuaState?, idx: Int): Int
     fun lua_rawset1(L: LuaState?, idx: Int)
-    fun lua_len1(L: LuaState?, idx: Int): Int
+    fun lua_len1(L: LuaState?, idx: Int)
     fun lua_rawlen1(L: LuaState?, idx: Int): Int
     fun lua_typename1(L: LuaState?, t: Int): String
 }
+
+internal expect val LUALIB_INSTANCE:LuaLib
