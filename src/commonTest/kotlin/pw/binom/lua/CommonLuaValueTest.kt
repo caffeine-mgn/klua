@@ -3,9 +3,9 @@ package pw.binom.lua
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class CommonLuaValueTest {
+class CommonLuaValueTest:AbstractTest() {
     @Test
-    fun readTable() {
+    fun readTable() = start {
         val e = LuaEngine()
         e["test"] = LuaValue.of(mapOf(1.0.lua to 2.0.lua))
         val table = e["test"]

@@ -2,7 +2,9 @@ package pw.binom.lua
 
 internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
     val index = absoluteStackValue(index)
-    return when (val type = lib.lua_type1(state, index)) {
+    val type = lib.lua_type1(state, index)
+    StdOut.info("Read from index=$index")
+    return when (type) {
         LUA_TNONE1, LUA_TNIL1 -> LuaValue.Nil
         LUA_TNUMBER1 -> LuaValue.Number(lib.lua_tonumberx1(state, index))
         LUA_TBOOLEAN1 -> LuaValue.Boolean(lib.lua_toboolean1(state, index) != 0)
@@ -78,7 +80,7 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
             LuaValue.LightUserData(c)
         }
         else -> {
-            val typename:String = "unknown"//TODO()//lua_typename1(this, type)?.toKString()
+            val typename: String = "unknown"//TODO()//lua_typename1(this, type)?.toKString()
             throw RuntimeException("Unknown lua type: $typename (Code $type)")
         }
     }

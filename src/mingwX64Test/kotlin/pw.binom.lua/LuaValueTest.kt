@@ -12,7 +12,7 @@ class LuaValueTest {
 
     @Test
     fun pushClosureTest() {
-        val e = createLuaEngine()
+        val e = LuaEngine()
         val m = ObjectContainer()
         val myFunc = m.makeClosure {
             emptyList()
@@ -24,7 +24,7 @@ class LuaValueTest {
 
     @Test
     fun pushTableTest() {
-        val e = createLuaEngine()
+        val e = LuaEngine()
         val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
         val table = LuaValue.of(mapOf(1.lua to 2.lua), metatable)
         e.ll.pushValue(table)
@@ -36,7 +36,7 @@ class LuaValueTest {
     fun readTableWithMetatable2() {
         try {
             println("#1")
-            val e = createLuaEngine()
+            val e = LuaEngine()
             println("#2")
             val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
             println("#3")
@@ -55,7 +55,7 @@ class LuaValueTest {
 
     @Test
     fun readTableWithMetatable1() {
-        val e = createLuaEngine()
+        val e = LuaEngine()
         val o = ObjectContainer()
         e["test"] = o.makeClosure {
             assertEquals(0, lua_gettop(e.ll.state))
@@ -92,7 +92,7 @@ class LuaValueTest {
 
     @Test
     fun readTableWithMetatable() {
-        val e = createLuaEngine()
+        val e = LuaEngine()
         val o = ObjectContainer()
         e["my_func"] = o.makeClosure {
             assertEquals(0, lua_gettop(e.ll.state))
@@ -124,7 +124,7 @@ class LuaValueTest {
 
     @Test
     fun readClosureTest() {
-        val e = createLuaEngine()
+        val e = LuaEngine()
         val m = ObjectContainer()
         val myFunc = m.makeClosure {
             emptyList()

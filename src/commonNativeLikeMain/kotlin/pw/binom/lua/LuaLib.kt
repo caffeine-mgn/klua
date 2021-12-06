@@ -19,11 +19,12 @@ internal expect class LuaLib {
     fun lua_rotate1(state: LuaState, idx: Int, n: Int)
     fun lua_newuserdatauv1(state: LuaState, sz: Int, nuvalue: Int): COpaquePointer1?
     fun lua_settop1(state: LuaState, idx: Int)
-    fun lua_pcallk1(state: LuaState, a: Int, b: Int, c: Int, d: lua_KContext1, e: lua_CFunction1?): Int
+    fun lua_pcallk1(state: LuaState, nargs: Int, nresults: Int, errfunc: Int, ctx: lua_KContext1, k: lua_CFunction1?): Int
     fun lua_topointer1(L: LuaState?, idx: Int): COpaquePointer1?
     fun luaL_traceback1(L: LuaState?, L1: LuaState?, msg: String?, level: Int)
     fun luaL_loadstring1(L: LuaState?, s: String): Int
     fun lua_pushnil1(L: LuaState?)
+    fun luaL_error1(L: LuaState?,message:String?):Int
     fun lua_pushcclosure1(L: LuaState?, fn: lua_CFunction1?, n: Int)
     fun lua_createtable1(L: LuaState?, narr: Int, nrec: Int)
     fun lua_pushnumber1(L: LuaState?, n: Double)

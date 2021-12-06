@@ -1,14 +1,17 @@
 package pw.binom.lua
 
-actual class LuaEngine actual constructor(){
+actual class LuaEngine actual constructor() {
     init {
-        println("LuaEngine #1")
+        StdOut.info("LuaEngine #1")
     }
 
-    internal val ll = LuaStateAndLib(LUALIB_INSTANCE.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"), LUALIB_INSTANCE)
+    internal val ll = LuaStateAndLib(
+        LUALIB_INSTANCE.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"),
+        LUALIB_INSTANCE
+    )
 
     init {
-        println("LuaEngine #2")
+        StdOut.info("LuaEngine #2")
     }
 
     init {
@@ -16,19 +19,19 @@ actual class LuaEngine actual constructor(){
     }
 
     init {
-        println("LuaEngine #3")
+        StdOut.info("LuaEngine #3")
     }
 
     private var closureGcRef = makeRef(LuaValue.FunctionValue(closureGc, upvalues = emptyList()))
 
     init {
-        println("LuaEngine #4")
+        StdOut.info("LuaEngine #4")
     }
 
     private var userdataGcRef = makeRef(LuaValue.FunctionValue(userdataGc, upvalues = emptyList()))
 
     init {
-        println("LuaEngine #5")
+        StdOut.info("LuaEngine #5")
     }
 
     private var internalPinned = HashMap<LuaValue.Ref, Int>()
@@ -53,8 +56,11 @@ actual class LuaEngine actual constructor(){
 
     actual operator fun set(name: String, value: LuaValue) {
         ll.checkState {
+            ll.state.printStack("before push")
             ll.pushValue(value)
+            ll.state.printStack("after push")
             ll.lib.lua_setglobal1(ll.state, name)
+            ll.state.printStack("after set")
         }
     }
 
@@ -97,6 +103,7 @@ actual class LuaEngine actual constructor(){
         value: LuaValue,
         vararg args: LuaValue
     ): List<LuaValue> {
+        StdOut.info("Try call $value, args:${args.toList()}")
         ll.pushValue(value)
         args.forEach {
             ll.pushValue(it)
@@ -107,16 +114,21 @@ actual class LuaEngine actual constructor(){
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
         ll.checkState {
-            println("LuaEngine-makeRef #1   ${value}")
-            ll.pushValue(value)
-            println("LuaEngine-makeRef #2  ll.state=${ll.state}")
-            println("top=${ll.lib.lua_gettop1(ll.state)}")
-            printStack()
-            val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
-            println("LuaEngine-makeRef #3")
-            val ref = ll.makeRef(popValue = true)
-            println("LuaEngine-makeRef #4")
-            return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
+            try {
+                println("LuaEngine-makeRef #1   ${value}")
+                ll.pushValue(value)
+                println("LuaEngine-makeRef #2  ll.state=${ll.state}")
+                println("top=${ll.lib.lua_gettop1(ll.state)}")
+                printStack("After put current function")
+                val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
+                println("LuaEngine-makeRef #3")
+                val ref = ll.makeRef(popValue = true)
+                println("LuaEngine-makeRef #4")
+                return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+                throw e
+            }
         }
     }
 

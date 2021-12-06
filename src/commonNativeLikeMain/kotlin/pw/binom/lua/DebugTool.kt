@@ -12,7 +12,7 @@ actual fun LuaEngine.printStack(message: String?):Unit{
 @Deprecated(message = "Debug Tool", level = DeprecationLevel.WARNING)
 fun LuaState.printStack(message: String? = null) {
     val msg = message ?: "Lua Stack"
-    println("---===$msg===---")
+    StdOut.info("---===$msg===---")
     val count = LUALIB_INSTANCE.lua_gettop1(this)
     for (i in 1..count) {
         val type = LUALIB_INSTANCE.lua_type1(this, i)
@@ -28,7 +28,7 @@ fun LuaState.printStack(message: String? = null) {
         if (type == LUA_TLIGHTUSERDATA1 || type == LUA_TUSERDATA1) {
             sb.append(" ptr:\"${LUALIB_INSTANCE.lua_touserdata1(this, i).strPtr()}\"")
         }
-        println(sb.toString())
+        StdOut.info(sb.toString())
     }
-    println("---===$msg===---")
+    StdOut.info("---===$msg===---")
 }

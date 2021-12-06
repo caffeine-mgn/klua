@@ -33,11 +33,12 @@ actual value class StableRef1<out T : Any> constructor(private val stablePtr: CO
 actual inline fun <reified T : Any> CPointer1<*>.asStableRef1(): StableRef1<T> =
     StableRef1(this.asStableRef<T>().asCPointer())
 
-internal actual class Heap{
-   actual companion object{
-        actual val PTR_SIZE:Int
+internal actual class Heap {
+    actual companion object {
+        actual val PTR_SIZE: Int
             get() = sizeOf<klua_pointer>().convert()
     }
+
     actual fun getPtrFromPtr(ptr: COpaquePointer1): COpaquePointer1? =
         ptr.reinterpret<klua_pointer>().pointed.pointer
 
@@ -83,6 +84,6 @@ actual val LUA_TLIGHTUSERDATA1
     get() = LUA_TLIGHTUSERDATA
 
 @OptIn(ExperimentalStdlibApi::class)
-actual fun <T> createCleaner1(obj: T, func: (T) -> Unit): Any = createCleaner(obj to func){
+actual fun <T> createCleaner1(obj: T, func: (T) -> Unit): Any = createCleaner(obj to func) {
     it.second(it.first)
 }

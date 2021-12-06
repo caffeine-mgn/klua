@@ -9,27 +9,7 @@ actual val AC_CLOSURE_PTR = staticCFunction<Unit> {
     0
 }
 
-private fun callClosure(skipClosureUserData: Boolean, state: LuaState): Int {
-    val ll = LuaStateAndLib(state, LUALIB_INSTANCE)
-    val value = ll.readValue(LUALIB_INSTANCE.lua_upvalueindex1(1), false).checkedData()
-    val func = value.value<LuaFunction>()
-    val count = lua_gettop(state)
-    val args = (1..count).mapNotNull {
-        val arg = ll.readValue(it, true)
-        if (arg is LuaValue.UserData && arg.ptr == AC_CLOSURE_PTR) {
-            return@mapNotNull null
-        }
-        arg
-    }
-    LUALIB_INSTANCE.lua_pop1(state, count)
-    val result = func.call(
-        req = args,
-    )
-    result.forEach {
-        ll.pushValue(it)
-    }
-    return result.size
-}
+
 
 //val AC_CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
 //    callClosure(true, state!!)
@@ -37,7 +17,7 @@ private fun callClosure(skipClosureUserData: Boolean, state: LuaState): Int {
 
 actual val CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
     try {
-        callClosure(true, state!!)
+        callClosure(state!!)
     } catch (e: Throwable) {
         e.printStackTrace()
         luaL_error(state, e.toString())

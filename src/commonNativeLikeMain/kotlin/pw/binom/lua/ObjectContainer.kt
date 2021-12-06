@@ -8,6 +8,7 @@ actual class ObjectContainer actual constructor() {
         LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upvalues = listOf(add(func)))
 
     actual fun add(data: Any?): LuaValue.LightUserData {
+        StdOut.info("Pushing ${data?.let { it::class }}")
         if (data == null) {
             return LuaValue.LightUserData(null)
         }
