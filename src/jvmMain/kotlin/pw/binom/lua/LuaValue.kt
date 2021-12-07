@@ -12,7 +12,7 @@ actual sealed interface LuaValue {
 
     actual class FunctionValue(val value: LuaFunction) : LuaValue {
         override fun makeNative(): LuaJValue = value
-        override fun toString(): kotlin.String = "function_value(${value.hashCode().toLong().toString(16)})"
+        override fun toString(): kotlin.String = "function_value(${value.hashCode().toUInt().toString(16)})"
     }
 
     actual class FunctionRef(val value: LuaFunction) : Ref, Callable {
@@ -28,7 +28,7 @@ actual sealed interface LuaValue {
         override val native: org.luaj.vm2.LuaValue
             get() = value
 
-        override fun toString(): kotlin.String = "function(${value.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "function(${value.hashCode().toUInt().toString(16)})"
         actual fun toValue(): FunctionValue = FunctionValue(value)
         override fun equals(other: Any?): kotlin.Boolean {
             if (other !is FunctionRef) {
@@ -66,9 +66,9 @@ actual sealed interface LuaValue {
     }
 
     actual class String actual constructor(actual val value: kotlin.String) : LuaValue {
-        override fun toString(): kotlin.String = value.toString()
+        override fun toString(): kotlin.String = value
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
+        override fun equals(other: Any?): kotlin.Boolean = other is String && value == other.value
         override fun makeNative(): LuaJValue =
             LuaJValue.valueOf(value)
     }
@@ -147,7 +147,7 @@ actual sealed interface LuaValue {
         override val size
             get() = of(native.len(), ref = true)
 
-        override fun toString(): kotlin.String = "table(${native.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "table(${native.hashCode().toUInt().toString(16)})"
     }
 
     actual class TableValue(val map: HashMap<LuaValue, LuaValue>, actual override var metatable: LuaValue) : LuaValue,
@@ -220,15 +220,15 @@ actual sealed interface LuaValue {
         actual val toLightUserData: LightUserData
             get() = LightUserData(value)
 
-        override fun toString(): kotlin.String = "userdata(${native.hashCode().toString(16)})"
+        override fun toString(): kotlin.String = "userdata(${native.hashCode().toUInt().toString(16)})"
         override fun callToString(): kotlin.String = native.tostring().checkjstring()
     }
 
-    actual class LightUserData(actual override val value: Any?) : Data {
+    actual class LightUserData actual constructor(actual override val value: Any?) : Data {
         override fun makeNative(): org.luaj.vm2.LuaValue =
             LuaJLightUserdata(value)
 
-        override fun toString(): kotlin.String = "lightuserdata(${value?.hashCode()?.toString(16) ?: 0})"
+        override fun toString(): kotlin.String = "lightuserdata(${value?.hashCode()?.toUInt()?.toString(16) ?: 0})"
     }
 
     actual companion object {

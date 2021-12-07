@@ -8,7 +8,6 @@ actual class ObjectContainer actual constructor() {
         LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upvalues = listOf(add(func)))
 
     actual fun add(data: Any?): LuaValue.LightUserData {
-        StdOut.info("Pushing ${data?.let { it::class }}")
         if (data == null) {
             return LuaValue.LightUserData(null)
         }
@@ -26,6 +25,24 @@ actual class ObjectContainer actual constructor() {
         val ptr = objToPtr.remove(data) ?: return false
         ptrToObj.remove(ptr)
         ptr.asStableRef1<Any>().dispose()
+        return true
+    }
+
+    actual fun removeClosure(data: LuaValue.FunctionRef): Boolean {
+        if (data.ptr != CLOSURE_FUNCTION)
+            return false
+        return remove(data.toValue())
+    }
+
+    actual fun removeClosure(data: LuaValue.FunctionValue): Boolean {
+        if (data.upvalues.size != 1) {
+            return false
+        }
+        val func = data.upvalues[0]
+        if (func is LuaValue.LightUserData && func.value is LuaFunction) {
+            func.dispose()
+            return true
+        }
         return true
     }
 
