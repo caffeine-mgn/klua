@@ -4,7 +4,6 @@ expect class NativePtr1
 expect class CFunction1<T : Function<*>>(rawPtr: NativePtr1) : CPointed1
 expect abstract class CPointed1(rawPtr: NativePtr1)
 expect class CPointer1<T : CPointed1>
-
 expect fun <T : CPointed1> CPointer1<T>?.toLong1(): Long
 
 expect class lua_State1 : CStructVar1

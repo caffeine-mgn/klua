@@ -4,16 +4,28 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
+import org.gradle.work.Incremental
+import org.gradle.work.InputChanges
 import pw.binom.kotlin.clang.*
 import org.jetbrains.kotlin.konan.target.HostManager
+import java.io.File
 
 abstract class BuildBinaryWasm32 : DefaultTask() {
     @get:OutputFile
-    abstract val output: RegularFileProperty
+    abstract val output: Property<File>
 
+    @get:OutputFile
+    val output2: File
+        get() {
+            val out = output.get()
+            return out.parentFile.resolve("${out.nameWithoutExtension}.wasm")
+        }
+
+    @get:Incremental
     @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
+//    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val cppFiles: ConfigurableFileCollection
 
     @get:Input
@@ -21,6 +33,16 @@ abstract class BuildBinaryWasm32 : DefaultTask() {
 
     @TaskAction
     fun execute() {
+//        return
+        val d = cppFiles.asFileTree.files.maxOfOrNull { it.lastModified() } ?: 0L
+        val o = output.get().lastModified()
+        if (d < o) {
+            return
+        }
+//        if (!output.get().asFile.exists()) {
+//            println("File ${output.get().asFile} not exist. Main 10 minutes")
+//            Thread.sleep(1000 * 60 * 60 * 10)
+//        }
         val args = ArrayList<String>()
         val emmcBin = if (HostManager.hostIsMingw) {
             "emcc.bat"
@@ -33,19 +55,18 @@ abstract class BuildBinaryWasm32 : DefaultTask() {
             args += it.absolutePath
         }
         args += "-o"
-        args += output.get().asFile.absolutePath
+        args += output.get().absolutePath
         val env = HashMap(System.getenv())
         this.customArgs.get().forEach {
             args += it
         }
-        println("Args: $args")
         val exitCode = startProcessAndWait(
             args = args,
             workDirectory = project.buildDir,
             envs = env
         )
         if (exitCode != 0) {
-            throw RuntimeException("Can't build ${output.get().asFile}")
+            throw RuntimeException("Can't build ${output.get()}")
         }
     }
 }

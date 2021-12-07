@@ -3,6 +3,8 @@ package pw.binom.lua
 expect class LuaEngine {
     constructor()
 
+    val closureAutoGcFunction: LuaValue.FunctionRef
+    val userdataAutoGcFunction: LuaValue.FunctionRef
     fun eval(text: String): List<LuaValue>
 
     /**
@@ -69,26 +71,4 @@ expect class LuaEngine {
      * Calls [value] with [args]
      */
     fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue>
-
-    /**
-     * Pin reference to prevent auto-remove by lua GC.
-     * @return `true` if object pinned successful. return `false` if object already pinned
-     */
-    fun pin(ref: LuaValue.Ref): Boolean
-
-    /**
-     * Unpin reference for allow to auto-remove by lua GC
-     * @return `true` if object successful unpinned. Return `false` if object already unpinned
-     */
-    fun unpin(ref: LuaValue.Ref): Boolean
-
-    /**
-     * Set of pinned object
-     */
-    val pinned: Set<LuaValue.Ref>
-
-    /**
-     * Unpin all pinned references
-     */
-    fun freeAllPinned()
 }

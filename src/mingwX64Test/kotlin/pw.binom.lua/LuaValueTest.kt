@@ -18,8 +18,8 @@ class LuaValueTest {
             emptyList()
         }
         e.ll.pushValue(myFunc)
-        assertEquals(1, lua_gettop(e.state))
-        assertEquals(LUA_TFUNCTION, lua_type(e.state, 1))
+        assertEquals(1, lua_gettop(e.ll.state))
+        assertEquals(LUA_TFUNCTION, lua_type(e.ll.state, 1))
     }
 
     @Test
@@ -28,18 +28,29 @@ class LuaValueTest {
         val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
         val table = LuaValue.of(mapOf(1.lua to 2.lua), metatable)
         e.ll.pushValue(table)
-        assertEquals(1, lua_gettop(e.state))
-        assertEquals(LUA_TTABLE, lua_type(e.state, 1))
+        assertEquals(1, lua_gettop(e.ll.state))
+        assertEquals(LUA_TTABLE, lua_type(e.ll.state, 1))
     }
 
     @Test
     fun readTableWithMetatable2() {
-        val e = LuaEngine()
-        val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
-        val table = LuaValue.of(mapOf(1.lua to 2.lua), metatable)
-        e.ll.pushValue(table)
-        e.ll.readValue(1,false)
-        assertEquals(1, lua_gettop(e.state))
+        try {
+            println("#1")
+            val e = LuaEngine()
+            println("#2")
+            val metatable = LuaValue.of(mapOf(2.lua to 3.lua))
+            println("#3")
+            val table = LuaValue.of(mapOf(1.lua to 2.lua), metatable)
+            println("#4")
+            e.ll.pushValue(table)
+            println("#5")
+            e.ll.readValue(1, false)
+            println("#6")
+            assertEquals(1, lua_gettop(e.ll.state))
+            println("#7")
+        } catch (e:Throwable) {
+            e.printStackTrace()
+        }
     }
 
     @Test
@@ -47,7 +58,7 @@ class LuaValueTest {
         val e = LuaEngine()
         val o = ObjectContainer()
         e["test"] = o.makeClosure {
-            assertEquals(0, lua_gettop(e.state))
+            assertEquals(0, lua_gettop(e.ll.state))
             println("->${it[0]}")
             emptyList()
         }
@@ -84,7 +95,7 @@ class LuaValueTest {
         val e = LuaEngine()
         val o = ObjectContainer()
         e["my_func"] = o.makeClosure {
-            assertEquals(0, lua_gettop(e.state))
+            assertEquals(0, lua_gettop(e.ll.state))
             println(it[0])
             emptyList()
         }

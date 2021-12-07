@@ -1,8 +1,10 @@
-import pw.binom.kotlin.clang.*
-import pw.binom.*
-import pw.binom.kotlin.clang.clangBuildStatic
-import pw.binom.kotlin.clang.eachNative
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
+import pw.binom.BuildBinaryWasm32
+import pw.binom.kotlin.clang.addStatic
+import pw.binom.kotlin.clang.clangBuildStatic
+import pw.binom.kotlin.clang.compileTaskName
+import pw.binom.kotlin.clang.eachNative
+import pw.binom.plugins.*
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
@@ -10,7 +12,7 @@ plugins {
 
 apply<pw.binom.plugins.BinomPublishPlugin>()
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
-
+val jsRun = System.getProperty("jsrun") != null
 kotlin {
     jvm()
     linuxX64 {
@@ -64,17 +66,41 @@ kotlin {
             framework()
         }
     }
-    js("js" /*BOTH*/) {
-        browser {
-            testTask {
-                useKarma {
-                    useFirefoxHeadless()
+    if (pw.binom.Config.JS_TARGET_SUPPORT) {
+        if (jsRun) {
+            js("js") {
+                browser {
+                    testTask {
+                        useKarma {
+                            useFirefox()
+//                        useFirefoxHeadless()
+//                        useChromium()
+                        }
+                    }
                 }
+                binaries.executable()
+            }
+        } else {
+            var applled = false
+            js(BOTH) {
+                browser {
+                    browser {
+                        testTask {
+                            if (!applled) {
+                                applled = true
+                                useKarma {
+                                    useChromiumHeadless()
+//                                useFirefoxHeadless()
+                                }
+                            }
+                        }
+                    }
+                }
+                nodejs()
             }
         }
-        binaries.executable()
-//        nodejs()
     }
+
     eachNative {
         val buildLuaTask = clangBuildStatic(target = konanTarget, name = "lua") {
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
@@ -115,9 +141,19 @@ kotlin {
             dependsOn(commonMain)
         }
 
+        val commonNativeLikeTest by creating {
+            dependsOn(commonTest)
+        }
+
         val linuxX64Main by getting {
             dependencies {
                 dependsOn(commonNativeLikeMain)
+            }
+        }
+
+        val linuxX64Test by getting {
+            dependencies {
+                dependsOn(commonNativeLikeTest)
             }
         }
 
@@ -141,6 +177,11 @@ kotlin {
         val mingwX64Main by getting {
             dependencies {
                 dependsOn(linuxX64Main)
+            }
+        }
+        val mingwX64Test by getting {
+            dependencies {
+                dependsOn(linuxX64Test)
             }
         }
         val androidNativeArm32Main by getting {
@@ -169,19 +210,21 @@ kotlin {
                 dependsOn(linuxX64Main)
             }
         }
-        val jsMain by getting {
-            dependencies {
-                api(kotlin("stdlib-js"))
-                dependsOn(commonNativeLikeMain)
+        if (pw.binom.Config.JS_TARGET_SUPPORT) {
+            val jsMain by getting {
+                dependencies {
+                    api(kotlin("stdlib-js"))
+                    dependsOn(commonNativeLikeMain)
+                }
+            }
+
+            val jsTest by getting {
+                dependencies {
+                    api(kotlin("test-js"))
+                    dependsOn(commonNativeLikeTest)
+                }
             }
         }
-
-        val jsTest by getting {
-            dependencies {
-                api(kotlin("test-js"))
-            }
-        }
-
         val jvmMain by getting {
             dependencies {
                 api("org.jetbrains.kotlin:kotlin-stdlib:${pw.binom.Versions.KOTLIN_VERSION}")
@@ -215,61 +258,106 @@ allprojects {
 //}
 
 tasks {
-    val linkTask = register("linkBinaryLuaWasm32", BuildBinaryWasm32::class.java)
-    linkTask.configure {
-        fun strConfig(name: String, value: String) {
+    if (pw.binom.Config.JS_TARGET_SUPPORT) {
+        val linkTask = register("linkBinaryLuaWasm32", BuildBinaryWasm32::class.java)
+        val linkTask1 = register("linkBinaryLuaWasm32SingleFile", BuildBinaryWasm32::class.java)
+        linkTask.configure {
+            this.output.set(buildDir.resolve("native/lua/wasm32/binary/lua_native.js"))
+        }
+        linkTask1.configure {
+            this.output.set(buildDir.resolve("native/lua/wasm32/binary/lua_native_single.js"))
             this.customArgs.add("-s")
-            this.customArgs.add("$name=$value")
+            this.customArgs.add("SINGLE_FILE=1")
+        }
+        listOf(linkTask, linkTask1).forEach {
+            it.run {
+                configure {
+                    fun strConfig(name: String, value: String) {
+                        this.customArgs.add("-s")
+                        this.customArgs.add("$name=$value")
+                    }
+
+                    val tmpFile = File.createTempFile("postjs", "js")
+                    val KLUA_CPP_SOURCES_DIR = file("src/nativeMain/klua")
+                    fun strConfig(name: String, value: Int) = strConfig(name = name, value = value.toString())
+                    group = "build"
+                    cppFiles.from(fileTree(LUA_SOURCES_DIR).filter { it.extension != "h" && it.extension != "hpp" && it.name != "luac.c" })
+                    cppFiles.from(fileTree(KLUA_CPP_SOURCES_DIR))
+                    this.customArgs.add("-DLUA_COMPAT_5_3")
+                    this.customArgs.add("-DLUA_BUILD_AS_DLL")
+                    this.customArgs.add("-g0")
+                    this.customArgs.add("-O0")
+                    this.customArgs.add("-fno-rtti")
+                    this.customArgs.add("--post-js")
+                    this.customArgs.add(tmpFile.absolutePath)
+                    strConfig("INVOKE_RUN", "0")
+                    strConfig("EXPORT_NAME", "LuaNative")
+                    strConfig("MODULARIZE", 1)
+                    strConfig("NO_FILESYSTEM", 1)
+                    strConfig("ABORTING_MALLOC", 0)
+                    strConfig("ALLOW_TABLE_GROWTH", 1)
+                    strConfig("ERROR_ON_UNDEFINED_SYMBOLS", 0)
+                    strConfig("SUPPORT_ERRNO", 0)
+                    strConfig("ALLOW_MEMORY_GROWTH", 1)
+                    strConfig("SAFE_HEAP", 0)
+                    strConfig("JS_MATH", 1)
+                    strConfig("ASSERTIONS", 0)
+                    strConfig("FETCH_SUPPORT_INDEXEDDB", 0)
+                    strConfig("FETCH", 0)
+                    this.customArgs.add("-flto")//Enables link-time optimizations (LTO).
+
+
+                    doFirst {
+                        tmpFile.writeText("Module['addFunction']=addFunction;Module['removeFunction']=removeFunction;")
+                    }
+                    doLast {
+                        tmpFile.delete()
+                    }
+                }
+            }
         }
 
-        fun strConfig(name: String, value: Int) = strConfig(name = name, value = value.toString())
-        group = "build"
-        this.cppFiles.from(fileTree(LUA_SOURCES_DIR).filter { it.extension != "h" && it.extension != "hpp" && it.name != "luac.c" })
-//        this.customArgs.add("-s")
-//        this.customArgs.add("EXPORT_ALL=1")
-//        this.customArgs.add("-s")
-//        this.customArgs.add("-s")
-//        customArgs.add("EXPORTED_FUNCTIONS")
-        this.customArgs.add("-DLUA_COMPAT_5_3")
-        this.customArgs.add("-DLUA_BUILD_AS_DLL")
-//        this.customArgs.add("-DLUA_LIB")
-//        this.customArgs.add("-fdeclspec")
-        this.customArgs.add("-g0")
-        this.customArgs.add("-O3")
-        strConfig("ENVIRONMENT", "web")
-        strConfig("EXPORT_NAME", "KLuaWasm")
-        strConfig("MODULARIZE", 1)
-//
-//        strConfig("MINIMAL_RUNTIME", 1)
-        strConfig("SUPPORT_ERRNO", 0)
-//        strConfig("ALLOW_MEMORY_GROWTH", 1)
-//        strConfig("SAFE_HEAP", 1)
-//        strConfig("JS_MATH", 1)
-//        strConfig("ASSERTIONS", 1)
+        if (jsRun) {
+            val jsTestClasses by getting {
+//        dependsOn(generateWasmTestingSource)
+            }
+
+            val jsProcessResources by getting {
+//            dependsOn(linkTask)
+            }
 
 
-//        this.customArgs.add("--extern-post-js")
-//        this.customArgs.add(buildDir.resolve("test.js").absolutePath)
-//        this.customArgs.add("---DLUA_COMPAT_5_3")
-//        this.customArgs.add("--cflags")
-        this.customArgs.add("-flto")//Enables link-time optimizations (LTO).
-//        this.customArgs.add("-D__EMSCRIPTEN__=1")
-//        this.cppFiles.from(c.staticFile)
-        this.output.set(buildDir.resolve("native/lua/wasm32/binary/lua.js"))
-    }
+            val jsTest by getting {
+//        dependsOn(appendTestData)
+                onlyIf { false }
+            }
 
-    val copyWasm by creating(Copy::class.java) {
-        from(linkTask.get().output.get().asFile.parentFile)
-        destinationDir = buildDir.resolve("processedResources/js/main")
-        dependsOn(linkTask)
-    }
-    val jsProcessResources by getting {
-        dependsOn(copyWasm)
-    }
 
-    val jsBrowserDevelopmentRun by getting(KotlinWebpack::class) {
-        this.devServer?.open = false
+            val jsBrowserDevelopmentRun by getting(KotlinWebpack::class) {
+                this.devServer?.open = false
+            }
+
+        }
+
+
+        val testingServer by creating(HttpServerTask::class.java) {
+            root(linkTask.get().output.get().parentFile)
+            port(8093)
+            dependsOn(linkTask)
+            dependsOn(linkTask1)
+        }
+        if (jsRun) {
+            val jsBrowserTest by getting {
+                testingServer.runDuringTask(this)
+            }
+        } else {
+            val jsLegacyBrowserTest by getting {
+                testingServer.runDuringTask(this)
+            }
+            val jsIrBrowserTest by getting {
+                testingServer.runDuringTask(this)
+            }
+        }
     }
 }
-
 apply<pw.binom.plugins.DocsPlugin>()

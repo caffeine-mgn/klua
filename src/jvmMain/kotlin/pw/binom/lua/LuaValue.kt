@@ -127,13 +127,13 @@ actual sealed interface LuaValue {
         override fun get(key: LuaValue): LuaValue =
             of(native.get(key.makeNative()), ref = true)
 
-        override var metatable: LuaValue
+        actual override var metatable: LuaValue
             get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
             set(value) {
                 native.setmetatable(value.makeNative())
             }
 
-        override fun call(vararg args: LuaValue): List<LuaValue> =
+        actual override fun call(vararg args: LuaValue): List<LuaValue> =
             try {
                 native.invoke(args.toNative()).toCommon()
             } catch (e: LuaError) {
@@ -150,7 +150,7 @@ actual sealed interface LuaValue {
         override fun toString(): kotlin.String = "table(${native.hashCode().toString(16)})"
     }
 
-    actual class TableValue(val map: HashMap<LuaValue, LuaValue>, override var metatable: LuaValue) : LuaValue,
+    actual class TableValue(val map: HashMap<LuaValue, LuaValue>, actual override var metatable: LuaValue) : LuaValue,
         Table, Meta {
         override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
         override fun rawSet(key: LuaValue, value: LuaValue) {
@@ -208,7 +208,7 @@ actual sealed interface LuaValue {
                 throw LuaException(e.message)
             }
 
-        override var metatable: LuaValue
+        actual override var metatable: LuaValue
             get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
             set(value) {
                 native.setmetatable(value.makeNative())
@@ -224,7 +224,7 @@ actual sealed interface LuaValue {
         override fun callToString(): kotlin.String = native.tostring().checkjstring()
     }
 
-    actual class LightUserData(override val value: Any?) : Data {
+    actual class LightUserData(actual override val value: Any?) : Data {
         override fun makeNative(): org.luaj.vm2.LuaValue =
             LuaJLightUserdata(value)
 
