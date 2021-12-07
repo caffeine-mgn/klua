@@ -15,6 +15,8 @@ expect class ObjectContainer {
      * @return `true` on successful remove. `false` - object already removed
      */
     fun remove(data: Any): Boolean
+    fun removeClosure(data: LuaValue.FunctionRef): Boolean
+    fun removeClosure(data: LuaValue.FunctionValue): Boolean
     fun get(data: LuaValue.LightUserData): Any?
     fun getClosure(func: LuaValue.FunctionValue): LuaFunction?
 

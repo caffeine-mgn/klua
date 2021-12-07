@@ -67,6 +67,7 @@ actual sealed interface LuaValue {
     }
 
     actual class LightUserData(var lightPtr: COpaquePointer1?) : Data {
+        actual constructor(value:Any?):this(value?.let { StableRef1.create(it).asCPointer()})
         actual override val value: Any?
             get() = lightPtr.toKotlinObject()
 

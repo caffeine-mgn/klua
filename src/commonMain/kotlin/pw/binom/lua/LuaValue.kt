@@ -17,7 +17,12 @@ expect sealed interface LuaValue {
         val toLightUserData: LightUserData
     }
 
-    class LightUserData : Data {
+    class LightUserData: Data {
+        /**
+         * Creates LightUserData to [value]. On native platform calls `StableRef.create(value)`. Make sure you
+         * call `StableRef.dispose()`. Otherwise you got memory leak
+         */
+        constructor(value:Any?)
         override val value: Any?
     }
 
