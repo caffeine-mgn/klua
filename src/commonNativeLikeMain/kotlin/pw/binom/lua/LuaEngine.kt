@@ -1,53 +1,27 @@
 package pw.binom.lua
 
 actual class LuaEngine actual constructor() {
-    init {
-        StdOut.info("LuaEngine #1")
-    }
-
     internal val ll = LuaStateAndLib(
         LUALIB_INSTANCE.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"),
         LUALIB_INSTANCE
     )
 
-    init {
-        StdOut.info("LuaEngine #2")
-    }
+    actual val closureAutoGcFunction: LuaValue.FunctionRef =
+        makeRef(LuaValue.FunctionValue(closureGc, upvalues = emptyList()))
+    actual val userdataAutoGcFunction: LuaValue.FunctionRef =
+        makeRef(LuaValue.FunctionValue(userdataGc, upvalues = emptyList()))
 
     init {
         ll.lib.luaL_openlibs1(ll.state)
     }
 
-    init {
-        StdOut.info("LuaEngine #3")
-    }
-
-    private var closureGcRef = makeRef(LuaValue.FunctionValue(closureGc, upvalues = emptyList()))
-
-    init {
-        StdOut.info("LuaEngine #4")
-    }
-
-    private var userdataGcRef = makeRef(LuaValue.FunctionValue(userdataGc, upvalues = emptyList()))
-
-    init {
-        StdOut.info("LuaEngine #5")
-    }
-
-    private var internalPinned = HashMap<LuaValue.Ref, Int>()
-    actual val pinned: Set<LuaValue.Ref>
-        get() = internalPinned.keys
-
     private val cleaner = createCleaner1(ll.state) {
-        println("LuaEngine disposing")
         ll.lib.lua_close1(it)
     }
 
     actual operator fun get(name: String): LuaValue {
         ll.checkState {
-            printStack("before-get-global")
             ll.lib.lua_getglobal1(ll.state, name)
-            printStack("after-get-global")
             val value = ll.readValue(-1, true)
             ll.pop(1)
             return value
@@ -56,11 +30,8 @@ actual class LuaEngine actual constructor() {
 
     actual operator fun set(name: String, value: LuaValue) {
         ll.checkState {
-            ll.state.printStack("before push")
             ll.pushValue(value)
-            ll.state.printStack("after push")
             ll.lib.lua_setglobal1(ll.state, name)
-            ll.state.printStack("after set")
         }
     }
 
@@ -103,7 +74,6 @@ actual class LuaEngine actual constructor() {
         value: LuaValue,
         vararg args: LuaValue
     ): List<LuaValue> {
-        StdOut.info("Try call $value, args:${args.toList()}")
         ll.pushValue(value)
         args.forEach {
             ll.pushValue(it)
@@ -115,15 +85,9 @@ actual class LuaEngine actual constructor() {
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
         ll.checkState {
             try {
-                println("LuaEngine-makeRef #1   ${value}")
                 ll.pushValue(value)
-                println("LuaEngine-makeRef #2  ll.state=${ll.state}")
-                println("top=${ll.lib.lua_gettop1(ll.state)}")
-                printStack("After put current function")
                 val ptr = ll.lib.lua_topointer1(ll.state, -1)!!
-                println("LuaEngine-makeRef #3")
                 val ref = ll.makeRef(popValue = true)
-                println("LuaEngine-makeRef #4")
                 return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
             } catch (e: Throwable) {
                 e.printStackTrace()
@@ -141,27 +105,6 @@ actual class LuaEngine actual constructor() {
         }
     }
 
-    actual fun pin(ref: LuaValue.Ref): Boolean {
-        if (ref in internalPinned) {
-            return false
-        }
-        internalPinned[ref] = ll.lib.luaL_ref1(ll.state, LUA_REGISTRYINDEX1)
-        return true
-    }
-
-    actual fun unpin(ref: LuaValue.Ref): Boolean {
-        val refId = internalPinned.remove(ref) ?: return false
-        ll.lib.luaL_unref1(ll.state, LUA_REGISTRYINDEX1, refId)
-        return true
-    }
-
-    actual fun freeAllPinned() {
-        internalPinned.forEach {
-            ll.lib.luaL_unref1(ll.state, LUA_REGISTRYINDEX1, it.value)
-        }
-        internalPinned.clear()
-    }
-
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData {
         ll.checkState {
             val mem = ll.lib.lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
@@ -176,7 +119,7 @@ actual class LuaEngine actual constructor() {
         val luaFunc = LuaValue.FunctionValue(CLOSURE_FUNCTION, listOf(LuaValue.LightUserData(ref.asCPointer())))
         val metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
-            "__gc".lua to closureGcRef
+            "__gc".lua to closureAutoGcFunction
         )
         val userData = createUserData(LuaValue.LightUserData(AC_CLOSURE_PTR))
         userData.metatable = metatable
@@ -186,9 +129,9 @@ actual class LuaEngine actual constructor() {
     actual fun setAC(userdata: LuaValue.UserData) {
         val table = userdata.metatable
         if (table is LuaValue.Table) {
-            table["__gc".lua] = userdataGcRef
+            table["__gc".lua] = userdataAutoGcFunction
         } else {
-            userdata.metatable = LuaValue.TableValue("__gc".lua to userdataGcRef)
+            userdata.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
         }
     }
 

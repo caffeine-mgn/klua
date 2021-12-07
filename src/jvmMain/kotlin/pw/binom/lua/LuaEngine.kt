@@ -16,6 +16,12 @@ actual class LuaEngine {
             throw LuaException(e.message, e)
         }
 
+    actual val closureAutoGcFunction: LuaValue.FunctionRef =
+        makeRef(LuaValue.FunctionValue(ClosureAdapter{ emptyList() }))
+
+    actual val userdataAutoGcFunction: LuaValue.FunctionRef =
+        makeRef(LuaValue.FunctionValue(ClosureAdapter{ emptyList() }))
+
     actual operator fun get(name: String): LuaValue =
         LuaValue.of(globals.get(name), ref = true)
 
@@ -52,16 +58,6 @@ actual class LuaEngine {
         val t = LuaValue.TableRef(value.makeNative() as KLuaTable)
         t.metatable = value.metatable
         return t
-    }
-
-    actual fun pin(ref: LuaValue.Ref): Boolean = false
-
-    actual fun unpin(ref: LuaValue.Ref): Boolean = false
-
-    actual val pinned: Set<LuaValue.Ref>
-        get() = emptySet()
-
-    actual fun freeAllPinned() {
     }
 
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData =
