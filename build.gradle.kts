@@ -15,57 +15,17 @@ val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
 val jsRun = System.getProperty("jsrun") != null
 kotlin {
     jvm()
-    linuxX64 {
-        binaries {
-            staticLib()
-        }
-    }
-    linuxArm32Hfp {
-        binaries {
-            staticLib()
-        }
-    }
-    linuxArm64 {
-        binaries {
-            staticLib()
-        }
-    }
-    mingwX64 {
-        binaries {
-            staticLib()
-        }
-    }
-    mingwX86 {
-        binaries {
-            staticLib()
-        }
-    }
-
-    androidNativeArm32 {
-        binaries {
-            staticLib()
-        }
-    }
-    androidNativeArm64 {
-        binaries {
-            staticLib()
-        }
-    }
-    androidNativeX86 {
-        binaries {
-            staticLib()
-        }
-    }
-    androidNativeX64 {
-        binaries {
-            staticLib()
-        }
-    }
-    macosX64 {
-        binaries {
-            framework()
-        }
-    }
+    linuxX64()
+    linuxArm32Hfp()
+    linuxArm64()
+    mingwX64()
+    mingwX86()
+    androidNativeArm32()
+    androidNativeArm64()
+    androidNativeX86()
+    androidNativeX64()
+    macosX64()
+    wasm32()
     if (pw.binom.Config.JS_TARGET_SUPPORT) {
         if (jsRun) {
             js("js") {
@@ -206,6 +166,11 @@ kotlin {
         }
 
         val mingwX86Main by getting {
+            dependencies {
+                dependsOn(linuxX64Main)
+            }
+        }
+        val wasm32Main by getting {
             dependencies {
                 dependsOn(linuxX64Main)
             }
