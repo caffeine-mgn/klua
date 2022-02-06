@@ -2,8 +2,8 @@ package pw.binom
 
 import org.gradle.api.Task
 import org.gradle.api.tasks.TaskContainer
-import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinNativeCompile
 import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile
+import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinNativeCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 
 fun TaskContainer.eachKotlinTest(func: (Task) -> Unit) {

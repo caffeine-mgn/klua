@@ -4,6 +4,7 @@ expect class NativePtr1
 expect class CFunction1<T : Function<*>>(rawPtr: NativePtr1) : CPointed1
 expect abstract class CPointed1(rawPtr: NativePtr1)
 expect class CPointer1<T : CPointed1>
+
 expect fun <T : CPointed1> CPointer1<T>?.toLong1(): Long
 
 expect class lua_State1 : CStructVar1
@@ -26,12 +27,14 @@ expect value class StableRef1<out T : Any> internal constructor(private val stab
 expect inline fun <reified T : Any> CPointer1<*>.asStableRef1(): StableRef1<T>
 
 typealias LuaState = CPointer1<lua_State1>
-internal expect class Heap{
-    companion object{
-        val PTR_SIZE:Int
+
+internal expect class Heap {
+    companion object {
+        val PTR_SIZE: Int
     }
-    fun getPtrFromPtr(ptr:COpaquePointer1):COpaquePointer1?
-    fun setPtrFromPtr(ptr:COpaquePointer1,value:COpaquePointer1?)
+
+    fun getPtrFromPtr(ptr: COpaquePointer1): COpaquePointer1?
+    fun setPtrFromPtr(ptr: COpaquePointer1, value: COpaquePointer1?)
 }
 
 expect val LUA_ERRMEM1: Int

@@ -2,14 +2,12 @@ package pw.binom
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
-import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
 import org.gradle.work.Incremental
-import org.gradle.work.InputChanges
-import pw.binom.kotlin.clang.*
 import org.jetbrains.kotlin.konan.target.HostManager
+import pw.binom.kotlin.clang.*
 import java.io.File
 
 abstract class BuildBinaryWasm32 : DefaultTask() {

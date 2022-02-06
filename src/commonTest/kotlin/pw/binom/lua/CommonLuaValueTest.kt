@@ -3,7 +3,7 @@ package pw.binom.lua
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class CommonLuaValueTest:AbstractTest() {
+class CommonLuaValueTest : AbstractTest() {
     @Test
     fun readTable() = start {
         val e = LuaEngine()

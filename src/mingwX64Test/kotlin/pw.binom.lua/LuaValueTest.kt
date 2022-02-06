@@ -48,7 +48,7 @@ class LuaValueTest {
             println("#6")
             assertEquals(1, lua_gettop(e.ll.state))
             println("#7")
-        } catch (e:Throwable) {
+        } catch (e: Throwable) {
             e.printStackTrace()
         }
     }
@@ -130,7 +130,7 @@ class LuaValueTest {
             emptyList()
         }
         e.ll.pushValue(myFunc)
-        val func = e.ll.readValue(1,false)
+        val func = e.ll.readValue(1, false)
         assertTrue(func is LuaValue.FunctionValue)
     }
 }

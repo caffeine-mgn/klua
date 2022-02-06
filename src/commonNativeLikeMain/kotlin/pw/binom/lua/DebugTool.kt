@@ -1,10 +1,9 @@
 package pw.binom.lua
 
 @Deprecated(message = "Debug Tool", level = DeprecationLevel.WARNING)
-actual fun LuaEngine.printStack(message: String?):Unit{
+actual fun LuaEngine.printStack(message: String?) {
     ll.state.printStack(message)
 }
-
 
 /**
  * Draws stack without any changes

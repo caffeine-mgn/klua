@@ -1,9 +1,9 @@
 package pw.binom.lua
 
-import org.luaj.vm2.Varargs
 import org.luaj.vm2.LuaError
 import org.luaj.vm2.LuaTable
 import org.luaj.vm2.LuaUserdata
+import org.luaj.vm2.Varargs
 import org.luaj.vm2.lib.jse.JsePlatform
 
 actual class LuaEngine {
@@ -17,10 +17,10 @@ actual class LuaEngine {
         }
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(ClosureAdapter{ emptyList() }))
+        makeRef(LuaValue.FunctionValue(ClosureAdapter { emptyList() }))
 
     actual val userdataAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(ClosureAdapter{ emptyList() }))
+        makeRef(LuaValue.FunctionValue(ClosureAdapter { emptyList() }))
 
     actual operator fun get(name: String): LuaValue =
         LuaValue.of(globals.get(name), ref = true)

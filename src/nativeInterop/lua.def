@@ -12,7 +12,3 @@ headerFilter = *.h
 typedef struct {
   void* pointer;
 } klua_pointer;
-
-
-void aa(){
-}

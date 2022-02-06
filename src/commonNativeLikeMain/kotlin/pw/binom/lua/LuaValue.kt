@@ -10,7 +10,8 @@ actual sealed interface LuaValue {
         fun dispose()
     }
 
-    actual class UserData internal constructor(override val ref: LuaRef, internal val ll: LuaStateAndLib) : RefObject,
+    actual class UserData internal constructor(override val ref: LuaRef, internal val ll: LuaStateAndLib) :
+        RefObject,
         Data {
         private val cleaner = createCleaner1(ll, ref)
 
@@ -32,7 +33,7 @@ actual sealed interface LuaValue {
 //                    val ptrLink = lua_touserdata1(state, -1)!!
 //                    state.pop(1)
 //                    return getPtrFromPtr(heap,ptrLink)!!
-////                    return ptrLink.reinterpret<klua_pointer>().pointed
+// //                    return ptrLink.reinterpret<klua_pointer>().pointed
 //                }
 //            }
 
@@ -67,7 +68,8 @@ actual sealed interface LuaValue {
     }
 
     actual class LightUserData(var lightPtr: COpaquePointer1?) : Data {
-        actual constructor(value:Any?):this(value?.let { StableRef1.create(it).asCPointer()})
+        actual constructor(value: Any?) : this(value?.let { StableRef1.create(it).asCPointer() })
+
         actual override val value: Any?
             get() = lightPtr.toKotlinObject()
 
@@ -134,7 +136,6 @@ actual sealed interface LuaValue {
         internal val ll: LuaStateAndLib
     ) : Table, RefObject {
         private val cleaner = createCleaner1(ll, ref)
-
 
         override operator fun get(key: LuaValue): LuaValue {
             ll.checkState {
@@ -244,7 +245,6 @@ actual sealed interface LuaValue {
             }
             return t as TableValue
         }
-
     }
 
     actual interface Callable : LuaValue {

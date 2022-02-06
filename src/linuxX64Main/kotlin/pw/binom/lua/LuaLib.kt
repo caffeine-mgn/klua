@@ -26,7 +26,14 @@ internal actual class LuaLib {
         lua_newuserdatauv(state, sz.convert(), nuvalue)
 
     actual fun lua_settop1(state: LuaState, idx: Int) = lua_settop(state, idx)
-    actual fun lua_pcallk1(state: LuaState, nargs: Int, nresults: Int, errfunc: Int, ctx: lua_KContext1, k: lua_CFunction1?) =
+    actual fun lua_pcallk1(
+        state: LuaState,
+        nargs: Int,
+        nresults: Int,
+        errfunc: Int,
+        ctx: lua_KContext1,
+        k: lua_CFunction1?
+    ) =
         lua_pcallk(state, nargs, nresults, errfunc, ctx.convert(), k?.reinterpret())
 
     actual fun lua_topointer1(L: LuaState?, idx: Int): COpaquePointer1? = lua_topointer(L, idx)

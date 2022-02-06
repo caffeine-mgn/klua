@@ -10,7 +10,7 @@ class ObjectContainerTest {
     fun makeClosureTest() {
         val m = ObjectContainer()
         val myFunc = m.makeClosure {
-            //Do nothing
+            // Do nothing
             emptyList()
         }
         assertEquals(CLOSURE_FUNCTION, myFunc.ptr)

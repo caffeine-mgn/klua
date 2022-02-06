@@ -1,17 +1,16 @@
 package pw.binom.plugins
 
-import org.gradle.api.DefaultTask
 import io.vertx.core.Vertx
 import io.vertx.core.http.HttpServer
+import org.gradle.api.DefaultTask
+import org.gradle.api.Task
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
-import org.gradle.api.Task
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.TaskProvider
 import java.io.File
-
 
 abstract class HttpServerTask : DefaultTask() {
     private val vertx = Vertx.vertx()
@@ -75,7 +74,6 @@ abstract class HttpServerTask : DefaultTask() {
         logger.info("Http server started on port ${port.get()}. Root directory: ${root.get().asFile.absolutePath}")
         server.listen(port.get())
     }
-
 
     open fun stop() {
         server?.also {

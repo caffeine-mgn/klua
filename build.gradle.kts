@@ -215,12 +215,12 @@ allprojects {
     }
 }
 
-//val c = clangBuildStatic(target = org.jetbrains.kotlin.konan.target.KonanTarget.WASM32, name = "lua") {
+// val c = clangBuildStatic(target = org.jetbrains.kotlin.konan.target.KonanTarget.WASM32, name = "lua") {
 //    compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
 //    compileDir(
 //        sourceDir = LUA_SOURCES_DIR,
 //    )
-//}
+// }
 
 tasks {
     if (pw.binom.Config.JS_TARGET_SUPPORT) {
@@ -269,8 +269,7 @@ tasks {
                     strConfig("ASSERTIONS", 0)
                     strConfig("FETCH_SUPPORT_INDEXEDDB", 0)
                     strConfig("FETCH", 0)
-                    this.customArgs.add("-flto")//Enables link-time optimizations (LTO).
-
+                    this.customArgs.add("-flto") // Enables link-time optimizations (LTO).
 
                     doFirst {
                         tmpFile.writeText("Module['addFunction']=addFunction;Module['removeFunction']=removeFunction;")
@@ -291,19 +290,15 @@ tasks {
 //            dependsOn(linkTask)
             }
 
-
             val jsTest by getting {
 //        dependsOn(appendTestData)
                 onlyIf { false }
             }
 
-
             val jsBrowserDevelopmentRun by getting(KotlinWebpack::class) {
                 this.devServer?.open = false
             }
-
         }
-
 
         val testingServer by creating(HttpServerTask::class.java) {
             root(linkTask.get().output.get().parentFile)

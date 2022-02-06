@@ -1,6 +1,5 @@
 package pw.binom.lua
 
-import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -10,7 +9,7 @@ class CommonLuaEngineTest : AbstractTest() {
     class MyObject(var value: Int)
 
     @Test
-    fun callTest()= start {
+    fun callTest() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         var called = false
@@ -19,10 +18,9 @@ class CommonLuaEngineTest : AbstractTest() {
             emptyList()
         }
         StdOut.info("---===CALL===---")
-        e.call(closure,"123".lua)
+        e.call(closure, "123".lua)
         assertTrue(called)
     }
-
 
     @Test
     fun globalTest() = start {
@@ -32,9 +30,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertTrue(e["test2"].isNil)
     }
 
-
     @Test
-    fun evalTest()= start {
+    fun evalTest() = start {
         val e = LuaEngine()
         val result = e.eval("return 123,456")
         assertEquals(2, result.size)
@@ -42,9 +39,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertEquals(456.0, result[1].checkedNumber())
     }
 
-
     @Test
-    fun getFromTableRef()= start {
+    fun getFromTableRef() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         e["test"] = o.makeClosure {
@@ -55,9 +51,8 @@ class CommonLuaEngineTest : AbstractTest() {
         e.eval("test({a='test'})")
     }
 
-
     @Test
-    fun lightUserDataTest()= start {
+    fun lightUserDataTest() = start {
         val N1 = 5
         val N2 = 10
         val N3 = 15
@@ -74,9 +69,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertEquals(N3, obj.value)
     }
 
-
     @Test
-    fun testAutoCleanUserData()= start {
+    fun testAutoCleanUserData() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         e["create"] = o.makeClosure {
@@ -92,9 +86,8 @@ class CommonLuaEngineTest : AbstractTest() {
         )
     }
 
-
     @Test
-    fun autoCleanClosureTest1()= start {
+    fun autoCleanClosureTest1() = start {
         val e = LuaEngine()
         var called = false
         val o = ObjectContainer()
@@ -115,9 +108,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertTrue(called)
     }
 
-
     @Test
-    fun autoCleanClosureTest2()= start {
+    fun autoCleanClosureTest2() = start {
         val e = LuaEngine()
         var argCount = 0
         e["test"] = e.createACClosure { it ->
@@ -128,9 +120,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertEquals(3, argCount)
     }
 
-
     @Test
-    fun toStringTest()= start {
+    fun toStringTest() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         val TEST_DATA = "Test Data"
@@ -160,9 +151,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertEquals(TEST_DATA, res[3].checkedString(), "tostring(tab)")
     }
 
-
     @Test
-    fun userDataTest2()= start {
+    fun userDataTest2() = start {
         val N1 = 5
         val N2 = 10
         val N3 = 15
@@ -172,7 +162,7 @@ class CommonLuaEngineTest : AbstractTest() {
         val obj = MyObject(N1)
         val lightUserData = o.add(obj)
         val userData = e.createUserData(lightUserData)
-        println("data=${lightUserData}")
+        println("data=$lightUserData")
 
         assertEquals(obj, userData.value())
         assertEquals(N1, userData.value<MyObject>().value)
@@ -182,9 +172,8 @@ class CommonLuaEngineTest : AbstractTest() {
         assertEquals(N3, obj.value)
     }
 
-
     @Test
-    fun callPassedFunctionTest()= start {
+    fun callPassedFunctionTest() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         var called = false
@@ -210,24 +199,24 @@ class CommonLuaEngineTest : AbstractTest() {
         assertTrue(called)
     }
 
-
     @Test
-    fun refFuncCall()= start {
+    fun refFuncCall() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         var called = false
-        val ref = e.makeRef(o.makeClosure {
-            called = true
-            emptyList()
-        })
+        val ref = e.makeRef(
+            o.makeClosure {
+                called = true
+                emptyList()
+            }
+        )
 
         ref.call()
         assertTrue(called)
     }
 
-
     @Test
-    fun throwException()= start {
+    fun throwException() = start {
         val e = LuaEngine()
         val c = ObjectContainer()
         e["throw_exception"] = c.makeClosure {
@@ -237,25 +226,23 @@ class CommonLuaEngineTest : AbstractTest() {
             e.eval("throw_exception()")
             fail("Lua should throw exception")
         } catch (e: LuaException) {
-            //Do nothing
+            // Do nothing
         }
     }
 
-
     @Test
-    fun errorCatching()= start {
+    fun errorCatching() = start {
         try {
             val e = LuaEngine()
             e.eval("fff()")
             fail("Lua should throw exception")
         } catch (e: LuaException) {
-            //Do nothing
+            // Do nothing
         }
     }
 
-
     @Test
-    fun metatableTest() = start{
+    fun metatableTest() = start {
         val e = LuaEngine()
         val o = ObjectContainer()
         val metatable = e.makeRef(LuaValue.of(mapOf("key".lua to "value".lua)))
@@ -268,13 +255,11 @@ class CommonLuaEngineTest : AbstractTest() {
 //        assertEquals("value", ref.getMetatable().checkedTable().rawGet("key".lua).checkedString())
     }
 
-
     @Test
-    fun test()= start {
+    fun test() = start {
 
         val e = LuaEngine()
         val c = ObjectContainer()
-
 
         val meta = LuaValue.of(
             mapOf(
@@ -288,7 +273,6 @@ class CommonLuaEngineTest : AbstractTest() {
 
         e["my_data"] = table
         e.eval("print(my_data)")
-
 
         e["myfunc"] = c.makeClosure {
             println("args: $it")

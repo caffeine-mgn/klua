@@ -14,7 +14,7 @@ actual typealias lua_State1 = lua_State
 
 actual typealias CVariable1 = CVariable
 actual typealias CStructVar1 = CStructVar
-//actual typealias StableRef1<T> = StableRef<T>
+// actual typealias StableRef1<T> = StableRef<T>
 
 actual value class StableRef1<out T : Any> constructor(private val stablePtr: COpaquePointer1) {
     actual companion object {

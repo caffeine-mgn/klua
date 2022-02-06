@@ -3,7 +3,6 @@ package pw.binom.lua
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-
 class RefTest : AbstractTest() {
     @Test
     fun pushGetReference() = start {

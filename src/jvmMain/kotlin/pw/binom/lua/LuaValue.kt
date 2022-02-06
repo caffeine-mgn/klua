@@ -150,8 +150,10 @@ actual sealed interface LuaValue {
         override fun toString(): kotlin.String = "table(${native.hashCode().toUInt().toString(16)})"
     }
 
-    actual class TableValue(val map: HashMap<LuaValue, LuaValue>, actual override var metatable: LuaValue) : LuaValue,
-        Table, Meta {
+    actual class TableValue(val map: HashMap<LuaValue, LuaValue>, actual override var metatable: LuaValue) :
+        LuaValue,
+        Table,
+        Meta {
         override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
         override fun rawSet(key: LuaValue, value: LuaValue) {
             if (value is Nil) {
