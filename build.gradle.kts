@@ -18,6 +18,8 @@ kotlin {
     linuxX64()
     linuxArm32Hfp()
     linuxArm64()
+    linuxMips32()
+    linuxMipsel32()
     mingwX64()
     mingwX86()
     androidNativeArm32()
@@ -25,6 +27,17 @@ kotlin {
     androidNativeX86()
     androidNativeX64()
     macosX64()
+    macosArm64()
+    ios()
+    iosArm32()
+    iosArm64()
+    iosSimulatorArm64()
+    watchos()
+    watchosArm32()
+    watchosArm64()
+    watchosSimulatorArm64()
+    watchosX86()
+    watchosX64()
     wasm32()
     if (pw.binom.Config.JS_TARGET_SUPPORT) {
         if (jsRun) {
@@ -164,7 +177,6 @@ kotlin {
                 dependsOn(linuxX64Main)
             }
         }
-
         val mingwX86Main by getting {
             dependencies {
                 dependsOn(linuxX64Main)

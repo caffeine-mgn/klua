@@ -22,16 +22,16 @@ internal inline fun <T> LuaStateAndLib.checkState(func: () -> T): T {
         func()
     } finally {
         val newTop = lib.lua_gettop1(state)
-        check(newTop == top) { "Invalid Stack Size. Expected: ${top}, Actual: $newTop" }
+        check(newTop == top) { "Invalid Stack Size. Expected: $top, Actual: $newTop" }
     }
 }
+
 internal inline fun COpaquePointer1?.strPtr() = this?.toLong1()?.toString(16) ?: "0"
 
-internal fun LuaStateAndLib.absoluteStackValue(index:Int)=
+internal fun LuaStateAndLib.absoluteStackValue(index: Int) =
     if (index.absoluteValue <= 255 && index < 0) lib.lua_gettop1(state) + index + 1 else index
 
 internal inline fun LuaStateAndLib.makeRef(): LuaRef = LuaRef(lib.luaL_ref1(state, LUA_REGISTRYINDEX1))
-
 
 internal fun LuaStateAndLib.makeRef(popValue: Boolean): LuaRef =
     if (popValue) {
@@ -56,7 +56,6 @@ internal fun LuaStateAndLib.makeRef(index: Int, popValue: Boolean): LuaRef =
 internal inline fun LuaStateAndLib.disposeRef(ref: LuaRef) = lib.luaL_unref1(state, LUA_REGISTRYINDEX1, ref.id)
 internal inline fun LuaStateAndLib.pushRef(ref: LuaRef) = lib.lua_rawgeti1(state, LUA_REGISTRYINDEX1, ref.id)
 internal inline fun LuaStateAndLib.type(index: Int = -1) = lib.lua_type1(state, index)
-//internal inline fun LuaState.typeName(index: Int = -1) = lua_typename1(this, type(index))
+// internal inline fun LuaState.typeName(index: Int = -1) = lua_typename1(this, type(index))
 
-
-value class LuaRef(val id:Int)
+value class LuaRef(val id: Int)

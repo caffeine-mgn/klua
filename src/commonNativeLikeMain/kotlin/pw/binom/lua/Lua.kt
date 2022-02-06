@@ -60,9 +60,8 @@ expect val AC_CLOSURE_PTR: CPointer1<CFunction1<() -> Unit>>
 expect val closureGc: lua_CFunction1
 expect val userdataGc: lua_CFunction1
 
-internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any =
-    createCleaner1(state to ref) {
-        it.first.disposeRef(it.second)
-    }
+internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any = createCleaner1(state to ref) {
+    it.first.disposeRef(it.second)
+}
 
 expect fun <T> createCleaner1(obj: T, func: (T) -> Unit): Any
