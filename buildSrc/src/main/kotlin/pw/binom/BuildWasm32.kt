@@ -48,7 +48,7 @@ abstract class BuildBinaryWasm32 : DefaultTask() {
             "emcc"
         }
         args += emmcBin
-        wrapBatchCmd(args)
+//        wrapBatchCmd(args)
         cppFiles.forEach {
             args += it.absolutePath
         }

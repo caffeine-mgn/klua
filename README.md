@@ -5,28 +5,31 @@
 [![Gradle build](https://github.com/caffeine-mgn/klua/actions/workflows/publish.yml/badge.svg) ](https://github.com/caffeine-mgn/klua/actions/workflows/publish.yml) <br><br>
 
 ### Support targets
-* JVM
-* Linux x64
-* Linux Arm32Hfp
-* Linux Arm64
-* Linux Mips32
-* Linux Mipsel32
-* Mingw x64
-* Mingw x86
-* Android Native Arm32
-* Android Native Arm64
-* Android Native x86
-* Android Native x64
-* Macos x64
-* Macos Arm64
-* IOS
-* IOS Arm32
-* IOS Arm64
-* IOS Simulator Arm64
-* WatchOS
-* WatchOS Arm32
-* WatchOS Arm64
-* WatchOS Simulator Arm64
-* WatchOS x64
-* WatchOS x86
-* Wasm32
+
+|Name| Status        |
+|---|---------------|
+|JVM| Supported     |
+|Linux x64| Supported     |
+|Linux Arm32Hfp| Supported     |
+|Linux Arm64| Supported     |
+|Linux Mips32| Supported     |
+|Linux Mipsel32| Supported     |
+|Mingw x64| Supported     |
+|Mingw x86| Supported     |
+|Android Native Arm32| Supported     |
+|Android Native Arm64| Supported     |
+|Android Native x86| Supported     |
+|Android Native x64| Supported     |
+|Macos x64| Supported     |
+|Wasm32| Supported     |
+|Macos Arm64| Not supported |
+|IOS| Not supported |
+|IOS Arm32| Not supported |
+|IOS Arm64| Not supported |
+|IOS Simulator Arm64| Not supported |
+|WatchOS| Not supported |
+|WatchOS Arm32| Not supported |
+|WatchOS Arm64| Not supported |
+|WatchOS Simulator Arm64| Not supported |
+|WatchOS x64| Not supported |
+|WatchOS x86| Not supported |

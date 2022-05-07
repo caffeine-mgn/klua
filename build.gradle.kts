@@ -1,16 +1,32 @@
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
 import pw.binom.BuildBinaryWasm32
+import pw.binom.binom
 import pw.binom.kotlin.clang.addStatic
 import pw.binom.kotlin.clang.clangBuildStatic
 import pw.binom.kotlin.clang.compileTaskName
 import pw.binom.kotlin.clang.eachNative
-import pw.binom.plugins.*
+import pw.binom.plugins.HttpServerTask
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
+    id("maven-publish")
 }
 
 apply<pw.binom.plugins.BinomPublishPlugin>()
+apply<pw.binom.plugins.CentralPublicationPlugin>()
+apply<pw.binom.plugins.PublicationAuthorPlugin>()
+apply<pw.binom.plugins.SignPlugin>()
+
+extensions.getByType(pw.binom.plugins.PublicationPomInfoExtension::class).apply {
+    useApache2License()
+    gitScm("https://github.com/caffeine-mgn/klua")
+    author(
+        id = "subochev",
+        name = "Anton Subochev",
+        email = "caffeine.mgn@gmail.com"
+    )
+}
+
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
 val jsRun = System.getProperty("jsrun") != null
 kotlin {
@@ -27,17 +43,17 @@ kotlin {
     androidNativeX86()
     androidNativeX64()
     macosX64()
-    macosArm64()
-    ios()
-    iosArm32()
-    iosArm64()
-    iosSimulatorArm64()
-    watchos()
-    watchosArm32()
-    watchosArm64()
-    watchosSimulatorArm64()
-    watchosX86()
-    watchosX64()
+//    macosArm64()
+//    ios()
+//    iosArm32()
+//    iosArm64()
+//    iosSimulatorArm64()
+//    watchos()
+//    watchosArm32()
+//    watchosArm64()
+//    watchosSimulatorArm64()
+//    watchosX86()
+//    watchosX64()
     wasm32()
     if (pw.binom.Config.JS_TARGET_SUPPORT) {
         if (jsRun) {
@@ -75,6 +91,7 @@ kotlin {
     }
 
     eachNative {
+        println("Target -> $this")
         val buildLuaTask = clangBuildStatic(target = konanTarget, name = "lua") {
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
             compileDir(
@@ -110,23 +127,23 @@ kotlin {
                 implementation(kotlin("test-annotations-common"))
             }
         }
-        val commonNativeLikeMain by creating {
-            dependsOn(commonMain)
-        }
-
-        val commonNativeLikeTest by creating {
-            dependsOn(commonTest)
-        }
+//        val commonNativeLikeMain by creating {
+//            dependsOn(commonMain)
+//        }
+//
+//        val commonNativeLikeTest by creating {
+//            dependsOn(commonTest)
+//        }
 
         val linuxX64Main by getting {
             dependencies {
-                dependsOn(commonNativeLikeMain)
+                dependsOn(commonMain)
             }
         }
 
         val linuxX64Test by getting {
             dependencies {
-                dependsOn(commonNativeLikeTest)
+                dependsOn(commonTest)
             }
         }
 
@@ -191,14 +208,14 @@ kotlin {
             val jsMain by getting {
                 dependencies {
                     api(kotlin("stdlib-js"))
-                    dependsOn(commonNativeLikeMain)
+                    dependsOn(commonMain)
                 }
             }
 
             val jsTest by getting {
                 dependencies {
                     api(kotlin("test-js"))
-                    dependsOn(commonNativeLikeTest)
+                    dependsOn(commonTest)
                 }
             }
         }
@@ -222,6 +239,7 @@ allprojects {
     group = "pw.binom"
 
     repositories {
+        binom()
         mavenLocal()
         mavenCentral()
     }
