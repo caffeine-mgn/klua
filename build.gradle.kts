@@ -29,8 +29,8 @@ val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
 val jsRun = System.getProperty("jsrun") != null
 kotlin {
     jvm()
+    linuxX64()
     ifNotMac {
-        linuxX64()
         linuxArm32Hfp()
         linuxArm64()
 //        linuxMips32()
@@ -146,62 +146,62 @@ kotlin {
                 dependsOn(commonTest)
             }
         }
-
-        val linuxArm32HfpMain by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
-            }
-        }
-        val linuxArm64Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
-            }
-        }
-
         val macosX64Main by getting {
             dependencies {
                 dependsOn(linuxX64Main)
             }
         }
+        ifNotMac {
+            val linuxArm32HfpMain by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
+            }
+            val linuxArm64Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
+            }
 
-        val mingwX64Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val mingwX64Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
-        }
-        val mingwX64Test by getting {
-            dependencies {
-                dependsOn(linuxX64Test)
+            val mingwX64Test by getting {
+                dependencies {
+                    dependsOn(linuxX64Test)
+                }
             }
-        }
-        val androidNativeArm32Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val androidNativeArm32Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
-        }
-        val androidNativeArm64Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val androidNativeArm64Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
-        }
-        val androidNativeX86Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val androidNativeX86Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
-        }
-        val androidNativeX64Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val androidNativeX64Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
-        }
-        val mingwX86Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val mingwX86Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
-        }
-        val wasm32Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
+            val wasm32Main by getting {
+                dependencies {
+                    dependsOn(linuxX64Main)
+                }
             }
         }
         if (pw.binom.Config.JS_TARGET_SUPPORT) {
