@@ -17,12 +17,13 @@ expect sealed interface LuaValue {
         val toLightUserData: LightUserData
     }
 
-    class LightUserData: Data {
+    class LightUserData : Data {
         /**
          * Creates LightUserData to [value]. On native platform calls `StableRef.create(value)`. Make sure you
          * call `StableRef.dispose()`. Otherwise you got memory leak
          */
-        constructor(value:Any?)
+        constructor(value: Any?)
+
         override val value: Any?
     }
 
@@ -71,6 +72,7 @@ expect sealed interface LuaValue {
 
     class TableValue : LuaValue, Table, Meta {
         override var metatable: LuaValue
+
         constructor(map: Map<LuaValue, LuaValue>)
         constructor(vararg keys: Pair<LuaValue, LuaValue>)
         constructor()

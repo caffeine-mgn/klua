@@ -1,7 +1,5 @@
 package pw.binom.lua
 
-import kotlin.jvm.JvmInline
-
 fun LuaValue.stringOrNull() =
     (this as? LuaValue.String)?.value
 
@@ -74,10 +72,10 @@ fun LuaValue.checkedLightUserdata() =
 fun LuaValue.checkedData() =
     (this as? LuaValue.Data) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Data")
 
-fun LuaValue.checkedFunctionRef()=
+fun LuaValue.checkedFunctionRef() =
     (this as? LuaValue.FunctionRef) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to FunctionRef")
 
-fun LuaValue.checkedFunctionValue()=
+fun LuaValue.checkedFunctionValue() =
     (this as? LuaValue.FunctionValue) ?: throw LuaCastException("Can't cast ${this::class.simpleName} to FunctionValue")
 
 val LuaValue.isString get() = this is LuaValue.String

@@ -18,6 +18,7 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven(url = "https://repo.binom.pw")
+    maven(url = "https://plugins.gradle.org/m2/")
 }
 
 dependencies {
@@ -26,4 +27,5 @@ dependencies {
     api("org.jetbrains.dokka:dokka-gradle-plugin:1.6.21")
     api("pw.binom:kn-clang:0.1.1")
     api("io.vertx:vertx-web:4.2.1")
+    api("pw.binom:binom-publish:0.1.0")
 }

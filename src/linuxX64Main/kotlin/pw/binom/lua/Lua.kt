@@ -70,9 +70,7 @@ internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any = createCle
 
 expect fun <T> createCleaner1(obj: T, func: (T) -> Unit): Any
 
-//-------------------------------------------//
-
-
+// -------------------------------------------//
 
 actual typealias NativePtr1 = kotlin.native.internal.NativePtr
 actual typealias CFunction1<T> = CFunction<T>

@@ -9,18 +9,10 @@ import org.gradle.api.tasks.TaskContainer
 import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile
 import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinNativeCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
-import pw.binom.plugins.BINOM_REPOSITORY_URL
-import pw.binom.plugins.PUBLISH_PLUGIN_NOT_EXIST_MESSAGE
 import java.io.ByteArrayOutputStream
 
 fun Project.propertyOrNull(property: String) =
     if (hasProperty(property)) property(property) as String else null
-
-fun RepositoryHandler.binom() {
-    maven {
-        it.setUrl(BINOM_REPOSITORY_URL)
-    }
-}
 
 fun Project.stringProperty(property: String) =
     propertyOrNull(property) ?: throw GradleException("Property \"$property\" not set")
@@ -28,9 +20,6 @@ fun Project.stringProperty(property: String) =
 @get:JvmName("getPublishingOrNull")
 val Project.publishing
     get() = (extensions.findByName("publishing") as PublishingExtension?)
-
-fun Project.getPublishing() =
-    publishing ?: throw GradleException("Can't find publishing extension. $PUBLISH_PLUGIN_NOT_EXIST_MESSAGE")
 
 val Project.isSnapshot
     get() = (version as String).endsWith("-SNAPSHOT")
