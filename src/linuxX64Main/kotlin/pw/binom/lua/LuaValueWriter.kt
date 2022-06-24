@@ -2,6 +2,7 @@ package pw.binom.lua
 
 internal fun LuaStateAndLib.pushValue(value: LuaValue) {
     when (value) {
+        LuaValue.Nil,
         is LuaValue.Nil -> lib.lua_pushnil1(state)
         is LuaValue.FunctionValue -> {
             value.upvalues.forEach {
@@ -31,5 +32,10 @@ internal fun LuaStateAndLib.pushValue(value: LuaValue) {
         is LuaValue.LightUserData -> {
             lib.lua_pushlightuserdata1(state, value.lightPtr)
         }
+        else -> throw RuntimeException("${value::class} not supported")
+//        is LuaValue.Callable -> TODO()
+//        is LuaValue.Data -> TODO()
+//        is LuaValue.Meta -> TODO()
+//        is LuaValue.Table -> TODO()
     }
 }
