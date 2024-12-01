@@ -1,5 +1,10 @@
 package pw.binom.lua
 
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.StableRef
+import platform.internal_lua.*
+
+@OptIn(ExperimentalForeignApi::class)
 actual class LuaEngine actual constructor() {
     internal val ll = LuaStateAndLib(
         LUALIB_INSTANCE.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"),
@@ -39,15 +44,15 @@ actual class LuaEngine actual constructor() {
         val r = ll.lib.luaL_loadstring1(ll.state, text)
         when (r) {
             0 -> {}
-            LUA_ERRSYNTAX1 -> {
+            LUA_ERRSYNTAX -> {
                 val msg = ll.lib.lua_tostring1(ll.state, -1)
                 ll.pop(1)
                 throw LuaException(msg ?: "Compile error")
             }
-            LUA_ERRMEM1 -> throw LuaException("LUA_ERRMEM")
+            LUA_ERRMEM -> throw LuaException("LUA_ERRMEM")
             else -> throw LuaException("Can't eval text \"$text\"")
         }
-        val exitCode = ll.lib.lua_pcall1(ll.state, 0, LUA_MULTRET1, 0)
+        val exitCode = ll.lib.lua_pcall1(ll.state, 0, LUA_MULTRET, 0)
         return pcallProcessing(ll, exitCode)
     }
 
@@ -66,7 +71,7 @@ actual class LuaEngine actual constructor() {
         args.forEach {
             ll.pushValue(it)
         }
-        val exec = ll.lib.lua_pcall1(ll.state, args.size, LUA_MULTRET1, 0)
+        val exec = ll.lib.lua_pcall1(ll.state, args.size, LUA_MULTRET, 0)
         return pcallProcessing(ll, exec)
     }
 
@@ -78,7 +83,7 @@ actual class LuaEngine actual constructor() {
         args.forEach {
             ll.pushValue(it)
         }
-        val exec = ll.lib.lua_pcall1(ll.state, args.size, LUA_MULTRET1, 0)
+        val exec = ll.lib.lua_pcall1(ll.state, args.size, LUA_MULTRET, 0)
         return pcallProcessing(ll, exec)
     }
 
@@ -115,7 +120,7 @@ actual class LuaEngine actual constructor() {
     }
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
-        val ref = StableRef1.create(func)
+        val ref = StableRef.create(func)
         val luaFunc = LuaValue.FunctionValue(CLOSURE_FUNCTION, listOf(LuaValue.LightUserData(ref.asCPointer())))
         val metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
@@ -143,7 +148,7 @@ actual class LuaEngine actual constructor() {
 
     actual fun createAC(value: Any?): LuaValue.UserData {
         try {
-            val ref = value?.let { StableRef1.create(it) }?.asCPointer()
+            val ref = value?.let { StableRef.create(it) }?.asCPointer()
             return createAC(LuaValue.LightUserData(ref))
         } catch (e: Throwable) {
             e.printStackTrace()
@@ -152,17 +157,19 @@ actual class LuaEngine actual constructor() {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 internal fun LuaStateAndLib.callClosure(vararg args: LuaValue): List<LuaValue> {
     args.forEach {
         pushValue(it)
     }
-    val exec = lib.lua_pcall1(state, args.size, LUA_MULTRET1, 0)
+    val exec = lib.lua_pcall1(state, args.size, LUA_MULTRET, 0)
     return pcallProcessing(this, exec)
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue> {
     when (exeCode) {
-        LUA_OK1 -> {
+        LUA_OK -> {
             val count = luaLib.lib.lua_gettop1(luaLib.state)
             val list = (1..count).map {
                 luaLib.readValue(it, true)
@@ -170,7 +177,7 @@ private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue
             luaLib.pop(count)
             return list
         }
-        LUA_ERRRUN1 -> {
+        LUA_ERRRUN -> {
             val message =
                 if (luaLib.lib.lua_gettop1(luaLib.state) == 1 && luaLib.lib.lua_isstring1(luaLib.state, 1) != 0) {
                     val str = luaLib.lib.lua_tostring1(luaLib.state, 1)
@@ -184,8 +191,8 @@ private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue
             luaLib.pop(1)
             throw LuaException(fullMessage)
         }
-        LUA_ERRMEM1 -> throw RuntimeException("memory allocation error. For such errors, Lua does not call the message handler.")
-        LUA_ERRERR1 -> throw RuntimeException("error while running the message handler.")
+        LUA_ERRMEM -> throw RuntimeException("memory allocation error. For such errors, Lua does not call the message handler.")
+        LUA_ERRERR -> throw RuntimeException("error while running the message handler.")
         else -> throw RuntimeException("Unknown invoke status")
     }
 }

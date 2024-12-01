@@ -15,6 +15,9 @@ expect sealed interface LuaValue {
     class UserData : RefObject, Data {
         override var metatable: LuaValue
         val toLightUserData: LightUserData
+        override val value: Any?
+        override fun callToString(): kotlin.String
+        override fun call(vararg args: LuaValue): List<LuaValue>
     }
 
     class LightUserData : Data {
@@ -72,6 +75,15 @@ expect sealed interface LuaValue {
 
     class TableValue : LuaValue, Table, Meta {
         override var metatable: LuaValue
+        override val rawSize: Int
+        override val size: LuaValue
+        override fun toMap(): Map<LuaValue, LuaValue>
+        override fun rawGet(key: LuaValue): LuaValue
+        override fun rawSet(key: LuaValue, value: LuaValue)
+        override fun set(key: LuaValue, value: LuaValue)
+        override fun get(key: LuaValue): LuaValue
+        override fun toValue(): TableValue
+
 
         constructor(map: Map<LuaValue, LuaValue>)
         constructor(vararg keys: Pair<LuaValue, LuaValue>)
@@ -79,7 +91,23 @@ expect sealed interface LuaValue {
     }
 
     class TableRef : Table, RefObject {
+        override val rawSize: Int
+        override fun toValue(): TableValue
+
+        override fun get(key: LuaValue): LuaValue
+
+        override fun set(key: LuaValue, value: LuaValue)
+
+        override fun rawSet(key: LuaValue, value: LuaValue)
+
+        override fun rawGet(key: LuaValue): LuaValue
+
+        override fun toMap(): Map<LuaValue, LuaValue>
+
+        override val size: LuaValue
         override var metatable: LuaValue
+        override fun callToString(): kotlin.String
+
         override fun call(vararg args: LuaValue): List<LuaValue>
     }
 

@@ -1,15 +1,20 @@
+@file:OptIn(ExperimentalForeignApi::class, ExperimentalForeignApi::class)
+
 package pw.binom.lua
+import platform.internal_lua.*
+
+import kotlinx.cinterop.ExperimentalForeignApi
 
 internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
     val index = absoluteStackValue(index)
     val type = lib.lua_type1(state, index)
     StdOut.info("Read from index=$index")
     return when (type) {
-        LUA_TNONE1, LUA_TNIL1 -> LuaValue.Nil
-        LUA_TNUMBER1 -> LuaValue.Number(lib.lua_tonumberx1(state, index))
-        LUA_TBOOLEAN1 -> LuaValue.Boolean(lib.lua_toboolean1(state, index) != 0)
-        LUA_TSTRING1 -> LuaValue.String(lib.lua_tostring1(state, index) ?: "")
-        LUA_TFUNCTION1 -> {
+        LUA_TNONE, LUA_TNIL -> LuaValue.Nil
+        LUA_TNUMBER -> LuaValue.Number(lib.lua_tonumberx1(state, index))
+        LUA_TBOOLEAN -> LuaValue.Boolean(lib.lua_toboolean1(state, index) != 0)
+        LUA_TSTRING -> LuaValue.String(lib.lua_tostring1(state, index) ?: "")
+        LUA_TFUNCTION -> {
             if (ref) {
                 val ref = makeRef(index, popValue = false)
                 val ptr = lib.lua_topointer1(state, index)!!
@@ -33,7 +38,7 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
                 LuaValue.FunctionValue(upvalues = upvalues, ptr = funcPtr)
             }
         }
-        LUA_TTABLE1 -> {
+        LUA_TTABLE -> {
             if (ref) {
                 checkState {
 //                    val ref = klua_get_value(this, index)!!
@@ -70,12 +75,12 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
             }
         }
 //        LUA_TUSERDATA1 -> TODO("User data not supported")
-        LUA_TTHREAD1 -> TODO("Thread not supported")
-        LUA_TUSERDATA1 -> {
+        LUA_TTHREAD -> TODO("Thread not supported")
+        LUA_TUSERDATA -> {
             val ref = makeRef(index, popValue = false)!!
             LuaValue.UserData(ref = ref, ll = this)
         }
-        LUA_TLIGHTUSERDATA1 -> {
+        LUA_TLIGHTUSERDATA -> {
             val c = lib.lua_touserdata1(state, index)
             LuaValue.LightUserData(c)
         }

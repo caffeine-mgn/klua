@@ -5,7 +5,9 @@ import pw.binom.kotlin.clang.clangBuildStatic
 import pw.binom.kotlin.clang.compileTaskName
 import pw.binom.kotlin.clang.eachNative
 import pw.binom.plugins.HttpServerTask
+import pw.binom.publish.allTargets
 import pw.binom.publish.binom
+import pw.binom.publish.dependsOn
 import pw.binom.publish.ifNotMac
 import pw.binom.publish.plugins.*
 
@@ -30,19 +32,12 @@ val jsRun = System.getProperty("jsrun") != null
 kotlin {
     jvm()
     linuxX64()
-    ifNotMac {
-        linuxArm32Hfp()
-        linuxArm64()
-//        linuxMips32()
-//        linuxMipsel32()
-        mingwX64()
-        mingwX86()
-        androidNativeArm32()
-        androidNativeArm64()
-        androidNativeX86()
-        androidNativeX64()
-        wasm32()
-    }
+    linuxArm64()
+    mingwX64()
+    androidNativeArm32()
+    androidNativeArm64()
+    androidNativeX86()
+    androidNativeX64()
     macosX64()
 //    macosArm64()
 //    ios()
@@ -55,7 +50,16 @@ kotlin {
 //    watchosSimulatorArm64()
 //    watchosX86()
 //    watchosX64()
-
+    targets {
+        compilerOptions {
+            freeCompilerArgs.add("-Xexpect-actual-classes")
+        }
+    }
+//    allTargets {
+//        compilerOptions {
+//            freeCompilerArgs.add("-Xexpect-actual-classes")
+//        }
+//    }
     if (pw.binom.Config.JS_TARGET_SUPPORT) {
         if (jsRun) {
             js("js") {
@@ -72,7 +76,7 @@ kotlin {
             }
         } else {
             var applled = false
-            js(BOTH) {
+            js(IR) {
                 browser {
                     browser {
                         testTask {
@@ -127,83 +131,23 @@ kotlin {
                 implementation(kotlin("test-annotations-common"))
             }
         }
-//        val commonNativeLikeMain by creating {
-//            dependsOn(commonMain)
-//        }
-//
-//        val commonNativeLikeTest by creating {
-//            dependsOn(commonTest)
-//        }
 
-        val linuxX64Main by getting {
-            dependencies {
-                dependsOn(commonMain)
-            }
+        val posixMain by creating {
+            dependsOn(commonMain)
         }
+        val posixTest by creating {
+            dependsOn(commonTest)
+        }
+        dependsOn("linux*Main", posixMain)
+        dependsOn("androidNative*Main", posixMain)
+        dependsOn("mingw*Main", posixMain)
+        dependsOn("macos*Main", posixMain)
 
-        val linuxX64Test by getting {
-            dependencies {
-                dependsOn(commonTest)
-            }
-        }
-        val macosX64Main by getting {
-            dependencies {
-                dependsOn(linuxX64Main)
-            }
-        }
-        ifNotMac {
-            val linuxArm32HfpMain by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val linuxArm64Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
+        dependsOn("linux*Test", posixTest)
+        dependsOn("androidNative*Test", posixTest)
+        dependsOn("mingw*Test", posixTest)
+        dependsOn("macos*Test", posixTest)
 
-            val mingwX64Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val mingwX64Test by getting {
-                dependencies {
-                    dependsOn(linuxX64Test)
-                }
-            }
-            val androidNativeArm32Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val androidNativeArm64Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val androidNativeX86Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val androidNativeX64Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val mingwX86Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-            val wasm32Main by getting {
-                dependencies {
-                    dependsOn(linuxX64Main)
-                }
-            }
-        }
         if (pw.binom.Config.JS_TARGET_SUPPORT) {
             val jsMain by getting {
                 dependencies {

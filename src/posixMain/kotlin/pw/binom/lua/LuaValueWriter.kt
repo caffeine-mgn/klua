@@ -1,4 +1,8 @@
+@file:OptIn(ExperimentalForeignApi::class)
+
 package pw.binom.lua
+
+import kotlinx.cinterop.ExperimentalForeignApi
 
 internal fun LuaStateAndLib.pushValue(value: LuaValue) {
     when (value) {

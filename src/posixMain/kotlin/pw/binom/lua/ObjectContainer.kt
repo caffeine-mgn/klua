@@ -1,8 +1,15 @@
+@file:OptIn(ExperimentalForeignApi::class)
+
 package pw.binom.lua
 
+import kotlinx.cinterop.COpaquePointer
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.asStableRef
+
 actual class ObjectContainer actual constructor() {
-    private val ptrToObj = HashMap<COpaquePointer1, Any>()
-    private val objToPtr = HashMap<Any, COpaquePointer1>()
+    private val ptrToObj = HashMap<COpaquePointer, Any>()
+    private val objToPtr = HashMap<Any, COpaquePointer>()
 
     actual fun makeClosure(func: LuaFunction): LuaValue.FunctionValue =
         LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upvalues = listOf(add(func)))
@@ -15,7 +22,7 @@ actual class ObjectContainer actual constructor() {
         if (exist != null) {
             return LuaValue.LightUserData(exist)
         }
-        val dataStableRef = StableRef1.create(data)
+        val dataStableRef = StableRef.create(data)
         ptrToObj[dataStableRef.asCPointer()] = data
         objToPtr[data] = dataStableRef.asCPointer()
         return LuaValue.LightUserData(dataStableRef.asCPointer())
@@ -24,7 +31,7 @@ actual class ObjectContainer actual constructor() {
     actual fun remove(data: Any): Boolean {
         val ptr = objToPtr.remove(data) ?: return false
         ptrToObj.remove(ptr)
-        ptr.asStableRef1<Any>().dispose()
+        ptr.asStableRef<Any>().dispose()
         return true
     }
 
@@ -56,7 +63,7 @@ actual class ObjectContainer actual constructor() {
 
     actual fun clear() {
         ptrToObj.keys.forEach {
-            it.asStableRef1<LuaFunction>().dispose()
+            it.asStableRef<LuaFunction>().dispose()
         }
         ptrToObj.clear()
         objToPtr.clear()

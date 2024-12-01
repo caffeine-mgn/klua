@@ -1,10 +1,15 @@
+@file:OptIn(ExperimentalForeignApi::class)
+
 package pw.binom.lua
+
+import kotlinx.cinterop.ExperimentalForeignApi
 
 import kotlinx.cinterop.staticCFunction
 import platform.internal_lua.luaL_error
+import platform.internal_lua.lua_CFunction
 import platform.internal_lua.lua_gettop
 
-actual val AC_CLOSURE_PTR = staticCFunction<Unit> {
+val AC_CLOSURE_PTR = staticCFunction<Unit> {
 // Do nothing
     0
 }
@@ -13,7 +18,7 @@ actual val AC_CLOSURE_PTR = staticCFunction<Unit> {
 //    callClosure(true, state!!)
 // }
 
-actual val CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
+val CLOSURE_FUNCTION: lua_CFunction = staticCFunction { state ->
     try {
         callClosure(state!!)
     } catch (e: Throwable) {
@@ -23,7 +28,7 @@ actual val CLOSURE_FUNCTION = staticCFunction<LuaState?, Int> { state ->
     }
 }
 
-actual val closureGc = staticCFunction<LuaState?, Int> { state ->
+val closureGc:lua_CFunction1 = staticCFunction<LuaState?, Int> { state ->
     try {
         check(lua_gettop(state) == 1) { "Invalid arguments" }
         val ll = LuaStateAndLib(state!!, LUALIB_INSTANCE)
@@ -38,7 +43,7 @@ actual val closureGc = staticCFunction<LuaState?, Int> { state ->
     }
 }
 
-actual val userdataGc = staticCFunction<LuaState?, Int> { state ->
+val userdataGc:lua_CFunction = staticCFunction { state ->
     try {
         check(lua_gettop(state) == 1) { "Invalid arguments" }
         val ll = LuaStateAndLib(state!!, LUALIB_INSTANCE)
