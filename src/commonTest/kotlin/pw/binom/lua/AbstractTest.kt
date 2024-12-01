@@ -1,7 +1,12 @@
 package pw.binom.lua
 
-expect abstract class AbstractTest {
+abstract class AbstractTest {
     constructor()
 
-    protected fun start(vararg a: Int, f: () -> Unit)
+    protected fun start(vararg a: Int, f: () -> Unit){
+        StdOut.func = {
+            println(it)
+        }
+        f()
+    }
 }

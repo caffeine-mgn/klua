@@ -97,6 +97,7 @@ kotlin {
 
     eachNative {
         val buildLuaTask = clangBuildStatic(target = konanTarget, name = "lua") {
+            konanVersion.set("2.0.21")
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
             compileDir(
                 sourceDir = LUA_SOURCES_DIR,
