@@ -16,7 +16,7 @@ actual class LuaEngine : AutoCloseable {
             throw LuaException(e.message, e)
         }
 
-    override fun close() {
+    actual override fun close() {
     }
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =

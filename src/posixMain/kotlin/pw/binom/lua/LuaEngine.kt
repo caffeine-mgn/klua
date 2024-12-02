@@ -25,7 +25,7 @@ actual class LuaEngine actual constructor() : AutoCloseable {
 
     private val closed = AtomicInt(0)
 
-    override fun close() {
+    actual override fun close() {
         if (!closed.compareAndSet(0, 1)) {
             return
         }
