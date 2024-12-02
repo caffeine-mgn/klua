@@ -6,6 +6,7 @@ expect class LuaEngine : AutoCloseable {
     val closureAutoGcFunction: LuaValue.FunctionRef
     val userdataAutoGcFunction: LuaValue.FunctionRef
     fun eval(text: String): List<LuaValue>
+    override fun close()
 
     /**
      * Returns global variable by [name]
