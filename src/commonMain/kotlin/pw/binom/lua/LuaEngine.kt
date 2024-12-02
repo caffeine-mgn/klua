@@ -1,6 +1,6 @@
 package pw.binom.lua
 
-expect class LuaEngine {
+expect class LuaEngine : AutoCloseable {
     constructor()
 
     val closureAutoGcFunction: LuaValue.FunctionRef

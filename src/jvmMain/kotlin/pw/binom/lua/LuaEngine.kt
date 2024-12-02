@@ -6,7 +6,7 @@ import org.luaj.vm2.LuaUserdata
 import org.luaj.vm2.Varargs
 import org.luaj.vm2.lib.jse.JsePlatform
 
-actual class LuaEngine {
+actual class LuaEngine : AutoCloseable {
     private val globals = JsePlatform.standardGlobals()
 
     actual fun eval(text: String): List<LuaValue> =
@@ -15,6 +15,9 @@ actual class LuaEngine {
         } catch (e: LuaError) {
             throw LuaException(e.message, e)
         }
+
+    override fun close() {
+    }
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
         makeRef(LuaValue.FunctionValue(ClosureAdapter { emptyList() }))
@@ -31,7 +34,7 @@ actual class LuaEngine {
 
     actual fun call(
         functionName: String,
-        vararg args: LuaValue
+        vararg args: LuaValue,
     ): List<LuaValue> {
         val func = globals.get(functionName)
         try {
@@ -43,7 +46,7 @@ actual class LuaEngine {
 
     actual fun call(
         value: LuaValue,
-        vararg args: LuaValue
+        vararg args: LuaValue,
     ): List<LuaValue> =
         try {
             value.makeNative().invoke(args.toNative()).toCommon()

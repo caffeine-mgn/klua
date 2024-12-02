@@ -3,9 +3,12 @@ package pw.binom.lua
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
 import platform.internal_lua.*
+import kotlin.concurrent.AtomicInt
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.ref.createCleaner
 
 @OptIn(ExperimentalForeignApi::class)
-actual class LuaEngine actual constructor() {
+actual class LuaEngine actual constructor() : AutoCloseable {
     internal val ll = LuaStateAndLib(
         LUALIB_INSTANCE.luaL_newstate1() ?: throw RuntimeException("Can't create Lua State"),
         LUALIB_INSTANCE
@@ -20,8 +23,20 @@ actual class LuaEngine actual constructor() {
         ll.lib.luaL_openlibs1(ll.state)
     }
 
-    private val cleaner = createCleaner1(ll.state) {
-        ll.lib.lua_close1(it)
+    private val closed = AtomicInt(0)
+
+    override fun close() {
+        if (!closed.compareAndSet(0, 1)) {
+            return
+        }
+        ll.lib.lua_close1(ll.state)
+    }
+
+    @OptIn(ExperimentalNativeApi::class)
+    private val cleaner = createCleaner(ll to closed) { (state, closed) ->
+        if (closed.value != 0) {
+            state.lib.lua_close1(state.state)
+        }
     }
 
     actual operator fun get(name: String): LuaValue {
@@ -49,6 +64,7 @@ actual class LuaEngine actual constructor() {
                 ll.pop(1)
                 throw LuaException(msg ?: "Compile error")
             }
+
             LUA_ERRMEM -> throw LuaException("LUA_ERRMEM")
             else -> throw LuaException("Can't eval text \"$text\"")
         }
@@ -58,7 +74,7 @@ actual class LuaEngine actual constructor() {
 
     actual fun call(
         functionName: String,
-        vararg args: LuaValue
+        vararg args: LuaValue,
     ): List<LuaValue> {
         ll.lib.lua_getglobal1(ll.state, functionName)
         if (ll.lib.lua_isnil1(ll.state, -1)) {
@@ -77,7 +93,7 @@ actual class LuaEngine actual constructor() {
 
     actual fun call(
         value: LuaValue,
-        vararg args: LuaValue
+        vararg args: LuaValue,
     ): List<LuaValue> {
         ll.pushValue(value)
         args.forEach {
@@ -177,6 +193,7 @@ private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue
             luaLib.pop(count)
             return list
         }
+
         LUA_ERRRUN -> {
             val message =
                 if (luaLib.lib.lua_gettop1(luaLib.state) == 1 && luaLib.lib.lua_isstring1(luaLib.state, 1) != 0) {
@@ -191,6 +208,7 @@ private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue
             luaLib.pop(1)
             throw LuaException(fullMessage)
         }
+
         LUA_ERRMEM -> throw RuntimeException("memory allocation error. For such errors, Lua does not call the message handler.")
         LUA_ERRERR -> throw RuntimeException("error while running the message handler.")
         else -> throw RuntimeException("Unknown invoke status")

@@ -51,7 +51,8 @@ typealias LuaState = CPointer<lua_State>
 //expect val LUA_TLIGHTUSERDATA1: Int
 
 
-internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any = createCleaner1(state to ref) {
+@OptIn(ExperimentalNativeApi::class)
+internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any = createCleaner(state to ref) {
     it.first.disposeRef(it.second)
 }
 
