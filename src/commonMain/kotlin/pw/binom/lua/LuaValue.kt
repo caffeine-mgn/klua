@@ -89,6 +89,8 @@ expect sealed interface LuaValue {
         constructor(map: Map<LuaValue, LuaValue>)
         constructor(vararg keys: Pair<LuaValue, LuaValue>)
         constructor()
+
+        override fun toList(): List<LuaValue>
     }
 
     class TableRef : Table, RefObject {
@@ -110,6 +112,7 @@ expect sealed interface LuaValue {
         override fun callToString(): kotlin.String
 
         override fun call(vararg args: LuaValue): List<LuaValue>
+        override fun toList(): List<LuaValue>
     }
 
     class FunctionRef : Ref, Callable {

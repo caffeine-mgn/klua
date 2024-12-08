@@ -116,7 +116,7 @@ actual sealed interface LuaValue {
         actual override fun toValue(): TableValue =
             TableValue(native.toMap(), metatable)
 
-        override fun toList(): List<LuaValue> =
+        actual override fun toList(): List<LuaValue> =
             (1..rawSize).map {
                 get(of(it.toLong()))
             }
@@ -182,7 +182,7 @@ actual sealed interface LuaValue {
             rawGet(key)
 
         actual override fun toValue(): TableValue = this
-        override fun toList(): List<LuaValue> =
+        actual override fun toList(): List<LuaValue> =
             (1..rawSize).map {
                 map[of(it.toLong())]?:Nil
             }
