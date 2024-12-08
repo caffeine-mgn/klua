@@ -46,7 +46,12 @@ actual sealed interface LuaValue {
         override fun makeNative(): LuaJValue =
             LuaJValue.valueOf(value)
 
-        override fun equals(other: Any?): kotlin.Boolean = value == other
+        override fun equals(other: Any?): kotlin.Boolean{
+            if (other==null || other !is Number) {
+                return false
+            }
+            return value == other.value
+        }
     }
 
     actual class LuaInt actual constructor(actual val value: Long) : LuaValue {
@@ -88,6 +93,7 @@ actual sealed interface LuaValue {
         actual operator fun set(key: LuaValue, value: LuaValue)
         actual operator fun get(key: LuaValue): LuaValue
         actual fun toValue(): TableValue
+        actual fun toList(): List<LuaValue>
     }
 
     actual sealed interface Ref : LuaValue {
@@ -109,6 +115,11 @@ actual sealed interface LuaValue {
     actual class TableRef(override val native: LuaTable) : Table, RefObject {
         actual override fun toValue(): TableValue =
             TableValue(native.toMap(), metatable)
+
+        override fun toList(): List<LuaValue> =
+            (1..rawSize).map {
+                get(of(it.toLong()))
+            }
 
         actual override val rawSize: Int
             get() = native.rawlen()
@@ -171,6 +182,10 @@ actual sealed interface LuaValue {
             rawGet(key)
 
         actual override fun toValue(): TableValue = this
+        override fun toList(): List<LuaValue> =
+            (1..rawSize).map {
+                map[of(it.toLong())]?:Nil
+            }
 
         override fun makeNative(): org.luaj.vm2.LuaValue {
             val t = map.toNative()
@@ -240,7 +255,7 @@ actual sealed interface LuaValue {
         actual fun of(value: kotlin.String): String = String(value)
         actual fun of(
             table: Map<LuaValue, LuaValue>,
-            metatable: LuaValue
+            metatable: LuaValue,
         ): TableValue =
             TableValue(HashMap(table), metatable)
 
@@ -261,6 +276,7 @@ actual sealed interface LuaValue {
                         v
                     }
                 }
+
                 LuaJValue.TFUNCTION -> {
                     if (ref) {
                         FunctionRef(value.checkfunction())
@@ -268,12 +284,28 @@ actual sealed interface LuaValue {
                         FunctionValue(value.checkfunction())
                     }
                 }
+
                 LuaJValue.TNIL -> Nil
                 else -> throw IllegalArgumentException("Unknown type ${value.typename()}")
             }
         }
 
         actual fun of(table: Map<LuaValue, LuaValue>): TableValue = TableValue(table)
+        actual fun of(table: List<LuaValue>): TableValue {
+            val result = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { index, luaValue ->
+                result[of(index.toLong() + 1)] = luaValue
+            }
+            return TableValue(result)
+        }
+
+        actual fun of(table: Array<LuaValue>): TableValue {
+            val result = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { index, luaValue ->
+                result[of(index.toLong() + 1)] = luaValue
+            }
+            return TableValue(result)
+        }
     }
 }
 

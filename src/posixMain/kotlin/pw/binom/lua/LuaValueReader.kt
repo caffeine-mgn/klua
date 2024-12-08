@@ -8,7 +8,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
     val index = absoluteStackValue(index)
     val type = lib.lua_type1(state, index)
-    StdOut.info("Read from index=$index")
     return when (type) {
         LUA_TNONE, LUA_TNIL -> LuaValue.Nil
         LUA_TNUMBER -> LuaValue.Number(lib.lua_tonumberx1(state, index))

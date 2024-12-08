@@ -1,9 +1,6 @@
 package pw.binom.lua
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
-import kotlin.test.fail
+import kotlin.test.*
 
 class CommonLuaEngineTest : AbstractTest() {
     class MyObject(var value: Int)
@@ -253,6 +250,34 @@ class CommonLuaEngineTest : AbstractTest() {
         println("-->${table.toValue().toMap()}")
         println("-->${table.metatable.checkedTable().toMap()}")
 //        assertEquals("value", ref.getMetatable().checkedTable().rawGet("key".lua).checkedString())
+    }
+
+    @Test
+    fun arrayTest() = start {
+        val e = LuaEngine()
+        val original = listOf(
+            LuaValue.of(11.0),
+            LuaValue.of(1.0),
+            LuaValue.of(2.0),
+            LuaValue.of(44.0),
+            LuaValue.of(3.0),
+        )
+        val res = e.eval(
+            """
+            return {11,1,2,44,3}
+        """
+        )[0] as LuaValue.Table
+        val l = res.toList()
+        assertEquals(5, res.rawSize)
+
+        (1..5).forEach {
+            val a = original[it - 1]
+            val b = res[LuaValue.of((it).toLong())]
+            assertEquals(a, b)
+        }
+        original.forEachIndexed { index, number ->
+            assertEquals(number, l[index])
+        }
     }
 
     @Test

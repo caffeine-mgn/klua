@@ -92,7 +92,12 @@ actual sealed interface LuaValue {
     actual class Number actual constructor(actual val value: Double) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
+        override fun equals(other: Any?): kotlin.Boolean{
+            if (other==null || other !is Number) {
+                return false
+            }
+            return value == other.value
+        }
     }
 
     actual class LuaInt actual constructor(actual val value: Long) : LuaValue {
@@ -126,6 +131,7 @@ actual sealed interface LuaValue {
         actual operator fun set(key: LuaValue, value: LuaValue)
         actual operator fun get(key: LuaValue): LuaValue
         actual fun toValue(): TableValue
+        actual fun toList(): List<LuaValue>
     }
 
     actual interface Meta : LuaValue {
@@ -136,10 +142,11 @@ actual sealed interface LuaValue {
         actual fun callToString(): kotlin.String
     }
 
+    @OptIn(ExperimentalForeignApi::class)
     actual class TableRef internal constructor(
         override val ref: LuaRef,
         val ptr: COpaquePointer,
-        internal val ll: LuaStateAndLib
+        internal val ll: LuaStateAndLib,
     ) : Table, RefObject {
         private val cleaner = createCleaner1(ll, ref)
 
@@ -251,6 +258,10 @@ actual sealed interface LuaValue {
             }
             return t as TableValue
         }
+
+        override fun toList(): List<LuaValue> = (1..rawSize).map {
+            get(of(it.toLong()))
+        }
     }
 
     actual interface Callable : LuaValue {
@@ -260,7 +271,7 @@ actual sealed interface LuaValue {
     actual class FunctionRef internal constructor(
         override val ref: LuaRef,
         val ptr: COpaquePointer,
-        internal val ll: LuaStateAndLib
+        internal val ll: LuaStateAndLib,
     ) : Ref, Callable {
         private val cleaner = createCleaner1(ll, ref)
 
@@ -326,6 +337,10 @@ actual sealed interface LuaValue {
             rawGet(key)
 
         actual override fun toValue(): TableValue = this
+        override fun toList(): List<LuaValue> =
+            (1..rawSize).map {
+                map[of(it.toLong())] ?: Nil
+            }
 
         actual override fun toMap(): Map<LuaValue, LuaValue> = map
     }
@@ -342,9 +357,25 @@ actual sealed interface LuaValue {
         actual fun of(table: Map<LuaValue, LuaValue>): TableValue = TableValue(table)
         actual fun of(
             table: Map<LuaValue, LuaValue>,
-            metatable: LuaValue
+            metatable: LuaValue,
         ): TableValue =
             TableValue(HashMap(table), metatable)
+
+        actual fun of(table: List<LuaValue>): TableValue {
+            val result = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { index, luaValue ->
+                result[of(index.toLong() + 1)] = luaValue
+            }
+            return TableValue(result)
+        }
+
+        actual fun of(table: Array<LuaValue>): TableValue {
+            val result = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { index, luaValue ->
+                result[of(index.toLong() + 1)] = luaValue
+            }
+            return TableValue(result)
+        }
     }
 }
 

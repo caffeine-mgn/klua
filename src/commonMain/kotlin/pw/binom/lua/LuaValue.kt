@@ -60,6 +60,7 @@ expect sealed interface LuaValue {
         val rawSize: Int
         val size: LuaValue
         fun toMap(): Map<LuaValue, LuaValue>
+        fun toList(): List<LuaValue>
         fun rawGet(key: LuaValue): LuaValue
         fun rawSet(key: LuaValue, value: LuaValue)
         operator fun set(key: LuaValue, value: LuaValue)
@@ -124,5 +125,7 @@ expect sealed interface LuaValue {
         fun of(value: kotlin.String): LuaValue.String
         fun of(table: Map<LuaValue, LuaValue>): LuaValue.TableValue
         fun of(table: Map<LuaValue, LuaValue>, metatable: LuaValue): LuaValue.TableValue
+        fun of(table: List<LuaValue>): TableValue
+        fun of(table: Array<LuaValue>): TableValue
     }
 }

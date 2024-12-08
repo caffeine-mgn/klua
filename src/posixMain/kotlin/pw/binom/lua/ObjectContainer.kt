@@ -7,6 +7,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.asStableRef
 
+@OptIn(ExperimentalForeignApi::class)
 actual class ObjectContainer actual constructor() {
     private val ptrToObj = HashMap<COpaquePointer, Any>()
     private val objToPtr = HashMap<Any, COpaquePointer>()
