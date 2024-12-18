@@ -92,8 +92,8 @@ actual sealed interface LuaValue {
     actual class Number actual constructor(actual val value: Double) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean{
-            if (other==null || other !is Number) {
+        override fun equals(other: Any?): kotlin.Boolean {
+            if (other == null || other !is Number) {
                 return false
             }
             return value == other.value
@@ -375,6 +375,17 @@ actual sealed interface LuaValue {
                 result[of(index.toLong() + 1)] = luaValue
             }
             return TableValue(result)
+        }
+
+        actual fun of(
+            table: List<LuaValue>,
+            metatable: LuaValue,
+        ): TableValue {
+            val result = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { index, luaValue ->
+                result[of(index.toLong() + 1)] = luaValue
+            }
+            return TableValue(result, metatable = metatable)
         }
     }
 }

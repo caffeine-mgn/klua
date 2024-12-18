@@ -46,8 +46,8 @@ actual sealed interface LuaValue {
         override fun makeNative(): LuaJValue =
             LuaJValue.valueOf(value)
 
-        override fun equals(other: Any?): kotlin.Boolean{
-            if (other==null || other !is Number) {
+        override fun equals(other: Any?): kotlin.Boolean {
+            if (other == null || other !is Number) {
                 return false
             }
             return value == other.value
@@ -184,7 +184,7 @@ actual sealed interface LuaValue {
         actual override fun toValue(): TableValue = this
         actual override fun toList(): List<LuaValue> =
             (1..rawSize).map {
-                map[of(it.toLong())]?:Nil
+                map[of(it.toLong())] ?: Nil
             }
 
         override fun makeNative(): org.luaj.vm2.LuaValue {
@@ -305,6 +305,17 @@ actual sealed interface LuaValue {
                 result[of(index.toLong() + 1)] = luaValue
             }
             return TableValue(result)
+        }
+
+        actual fun of(
+            table: List<LuaValue>,
+            metatable: LuaValue,
+        ): TableValue {
+            val result = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { index, luaValue ->
+                result[of(index.toLong() + 1)] = luaValue
+            }
+            return TableValue(result, metatable)
         }
     }
 }

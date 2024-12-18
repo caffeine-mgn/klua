@@ -129,6 +129,7 @@ expect sealed interface LuaValue {
         fun of(table: Map<LuaValue, LuaValue>): LuaValue.TableValue
         fun of(table: Map<LuaValue, LuaValue>, metatable: LuaValue): LuaValue.TableValue
         fun of(table: List<LuaValue>): TableValue
+        fun of(table: List<LuaValue>, metatable: LuaValue): TableValue
         fun of(table: Array<LuaValue>): TableValue
     }
 }
