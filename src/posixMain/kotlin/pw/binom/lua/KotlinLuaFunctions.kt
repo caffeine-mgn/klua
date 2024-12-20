@@ -9,11 +9,11 @@ internal fun callClosure(state: LuaState): Int {
     state.printStack("Call Closure Args")
     val ll = LuaStateAndLib(state, LUALIB_INSTANCE)
     StdOut.info("Try to call js function LUA_REGISTRYINDEX1=$LUA_REGISTRYINDEX")
-    val funcPtr = ll.readValue(LUALIB_INSTANCE.lua_upvalueindex1(1), false)
+    val funcPtr = ll.readValue(lua_upvalueindex1(1), false)
     StdOut.info("funcPtr=$funcPtr")
     val value = funcPtr.checkedData()
     val func = value.value<LuaFunction>()
-    val count = LUALIB_INSTANCE.lua_gettop1(state)
+    val count = lua_gettop(state)
     val args = (1..count).mapNotNull {
         val arg = ll.readValue(it, true)
         if (arg is LuaValue.UserData && arg.ptr == AC_CLOSURE_PTR) {
@@ -21,7 +21,7 @@ internal fun callClosure(state: LuaState): Int {
         }
         arg
     }
-    LUALIB_INSTANCE.lua_pop1(state, count)
+    lua_pop(state, count)
     val result = func.call(
         req = args,
     )
