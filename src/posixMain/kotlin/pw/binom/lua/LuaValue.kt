@@ -53,7 +53,7 @@ actual sealed interface LuaValue {
                 }
 
         val ptr: COpaquePointer?
-            get() = ll.lib.heap.getPtrFromPtr(lk)
+            get() = Heap.getPtrFromPtr(lk)
 
         actual override val value: Any?
             get() = ptr.toKotlinObject()
@@ -61,7 +61,7 @@ actual sealed interface LuaValue {
         override fun dispose() {
             val ptr = ptr ?: return
             ptr.asStableRef<Any>().dispose()
-            ll.lib.heap.setPtrFromPtr(lk, null)
+            Heap.setPtrFromPtr(lk, null)
         }
 
         actual val toLightUserData: LightUserData

@@ -31,7 +31,7 @@ val CLOSURE_FUNCTION: lua_CFunction = staticCFunction { state ->
 val closureGc:lua_CFunction1 = staticCFunction<LuaState?, Int> { state ->
     try {
         check(lua_gettop(state) == 1) { "Invalid arguments" }
-        val ll = LuaStateAndLib(state!!, LUALIB_INSTANCE)
+        val ll = LuaStateAndLib(state!!)
         val userData = ll.readValue(-1, false).checkedUserdata()
         val funcValue = userData.metatable.checkedTable()["__call".lua].checkedFunctionRef().toValue()
         check(funcValue.upvalues.size == 1) { "Invalid upvalues state" }
@@ -46,7 +46,7 @@ val closureGc:lua_CFunction1 = staticCFunction<LuaState?, Int> { state ->
 val userdataGc:lua_CFunction = staticCFunction { state ->
     try {
         check(lua_gettop(state) == 1) { "Invalid arguments" }
-        val ll = LuaStateAndLib(state!!, LUALIB_INSTANCE)
+        val ll = LuaStateAndLib(state!!)
         val userData = ll.readValue(-1, false).checkedUserdata()
         userData.dispose()
         0

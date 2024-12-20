@@ -11,7 +11,6 @@ import kotlin.native.ref.createCleaner
 actual class LuaEngine actual constructor() : AutoCloseable {
     internal val ll = LuaStateAndLib(
         luaL_newstate() ?: throw RuntimeException("Can't create Lua State"),
-        LUALIB_INSTANCE
     )
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
@@ -128,8 +127,8 @@ actual class LuaEngine actual constructor() : AutoCloseable {
 
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData {
         ll.state.checkState {
-            val mem = ll.lib.lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
-            ll.lib.heap.setPtrFromPtr(mem, value = value.lightPtr)
+            val mem = lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
+            Heap.setPtrFromPtr(mem, value = value.lightPtr)
             val ret = LuaValue.UserData(ll.state.makeRef(), ll)
             return ret
         }

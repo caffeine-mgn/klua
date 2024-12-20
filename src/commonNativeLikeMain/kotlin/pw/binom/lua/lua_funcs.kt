@@ -15,7 +15,7 @@ internal inline fun LuaLib.lua_remove1(L: LuaState, idx: Int) {
 }
 
 internal inline fun LuaStateAndLib.pop(size: Int) = lib.lua_pop1(state, size)
-internal inline fun LuaLib.lua_newuserdata1(L: LuaState, s: Int) = lua_newuserdatauv1(L, s, 1)
+internal inline fun lua_newuserdata1(L: LuaState, s: Int) = lua_newuserdatauv1(L, s, 1)
 internal inline fun <T> LuaStateAndLib.checkState(func: () -> T): T {
     val top = lib.lua_gettop1(state)
     return try {
