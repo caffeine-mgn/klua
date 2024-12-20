@@ -4,11 +4,10 @@ package pw.binom.lua
 
 import kotlinx.cinterop.*
 import platform.internal_lua.*
-import pw.binom.lua.readValue
 
 actual sealed interface LuaValue {
-    actual class FunctionValue(val ptr: lua_CFunction1?, val upvalues: List<LuaValue>) : LuaValue {
-        override fun toString(): kotlin.String = "function_value(${ptr.strPtr()}, $upvalues)"
+    actual class FunctionValue(val ptr: lua_CFunction1?, val upValues: List<LuaValue>) : LuaValue {
+        override fun toString(): kotlin.String = "function_value(${ptr.strPtr()}, $upValues)"
     }
 
     actual interface Data : LuaValue {
@@ -16,8 +15,10 @@ actual sealed interface LuaValue {
         fun dispose()
     }
 
-    actual class UserData internal constructor(override val ref: LuaRef, internal val ll: LuaStateAndLib) :
-        RefObject,
+    actual class UserData internal constructor(
+        override val ref: LuaRef,
+        internal val ll: LuaStateAndLib,
+    ) : RefObject,
         Data {
         private val cleaner = createCleaner1(ll, ref)
 
@@ -32,23 +33,12 @@ actual sealed interface LuaValue {
             return ll.callClosure(*args)
         }
 
-//        val link: COpaquePointer1
-//            get() {
-//                state.checkState {
-//                    state.pushValue(this)
-//                    val ptrLink = lua_touserdata1(state, -1)!!
-//                    state.pop(1)
-//                    return getPtrFromPtr(heap,ptrLink)!!
-// //                    return ptrLink.reinterpret<klua_pointer>().pointed
-//                }
-//            }
-
         val lk: COpaquePointer
             get() =
                 ll.state.checkState {
                     ll.pushValue(this)
                     val ptrLink = lua_touserdata(ll.state, -1)!!
-                    lua_pop(ll.state,1)
+                    lua_pop(ll.state, 1)
                     return ptrLink
                 }
 
@@ -157,7 +147,7 @@ actual sealed interface LuaValue {
                 ll.pushValue(key)
                 lua_gettable(ll.state, -2)
                 val value = ll.readValue(-1, ref = true)
-                lua_pop(ll.state,2)
+                lua_pop(ll.state, 2)
                 return value
             }
         }
@@ -168,7 +158,7 @@ actual sealed interface LuaValue {
                 ll.pushValue(key)
                 ll.pushValue(value)
                 lua_settable(ll.state, -3)
-                lua_pop(ll.state,1)
+                lua_pop(ll.state, 1)
             }
         }
 
@@ -178,7 +168,7 @@ actual sealed interface LuaValue {
                 ll.pushValue(key)
                 lua_rawget(ll.state, -2)
                 val value = ll.readValue(-1, true)
-                lua_pop(ll.state,1)
+                lua_pop(ll.state, 1)
                 return value
             }
         }
@@ -189,7 +179,7 @@ actual sealed interface LuaValue {
                 ll.pushValue(key)
                 ll.pushValue(value)
                 lua_rawset(ll.state, -3)
-                lua_pop(ll.state,1)
+                lua_pop(ll.state, 1)
             }
         }
 
@@ -199,7 +189,7 @@ actual sealed interface LuaValue {
                     ll.pushValue(this)
                     lua_len(ll.state, -1)
                     val value = ll.readValue(-1, true)
-                    lua_pop(ll.state,1)
+                    lua_pop(ll.state, 1)
                     return value
                 }
             }
@@ -209,7 +199,7 @@ actual sealed interface LuaValue {
                 ll.state.checkState {
                     ll.pushValue(this)
                     val len = lua_rawlen(ll.state, -1).toInt()
-                    lua_pop(ll.state,1)
+                    lua_pop(ll.state, 1)
                     return len.toInt()
                 }
             }
@@ -254,7 +244,7 @@ actual sealed interface LuaValue {
             val t = ll.state.checkState {
                 ll.pushValue(this)
                 val result = ll.readValue(-1, false)
-                lua_pop(ll.state,1)
+                lua_pop(ll.state, 1)
                 result
             }
             return t as TableValue
@@ -287,7 +277,7 @@ actual sealed interface LuaValue {
             ll.state.checkState {
                 ll.pushValue(this)
                 val ret = ll.readValue(-1, ref = false) as FunctionValue
-                lua_pop(ll.state,1)
+                lua_pop(ll.state, 1)
                 ret
             }
 
@@ -396,10 +386,10 @@ private fun getMetatable(ll: LuaStateAndLib, value: LuaValue.Meta): LuaValue {
         ll.pushValue(value)
         if (lua_getmetatable(ll.state, -1) != 0) {
             val s = ll.readValue(-1, true)
-            lua_pop(ll.state,2)
+            lua_pop(ll.state, 2)
             s
         } else {
-            lua_pop(ll.state,1)
+            lua_pop(ll.state, 1)
             LuaValue.Nil
         }
     }
@@ -411,15 +401,15 @@ private fun setMetatable(ll: LuaStateAndLib, value: LuaValue.Meta, table: LuaVal
         ll.pushValue(value)
         ll.pushValue(table)
         lua_setmetatable(ll.state, -2)
-        lua_pop(ll.state,1)
+        lua_pop(ll.state, 1)
     }
 }
 
 private fun LuaValue.RefObject.callToString(ll: LuaStateAndLib): kotlin.String =
     ll.state.checkState {
         ll.pushValue(this)
-        val str = luaL_tolstring(ll.state, -1,null)?.toKString()
-        lua_pop(ll.state,2)
+        val str = luaL_tolstring(ll.state, -1, null)?.toKString()
+        lua_pop(ll.state, 2)
         return str ?: ""
     }
 

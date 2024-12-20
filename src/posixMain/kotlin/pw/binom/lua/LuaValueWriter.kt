@@ -10,10 +10,10 @@ internal fun LuaStateAndLib.pushValue(value: LuaValue) {
         LuaValue.Nil,
         is LuaValue.Nil -> lua_pushnil(state)
         is LuaValue.FunctionValue -> {
-            value.upvalues.forEach {
+            value.upValues.forEach {
                 pushValue(it)
             }
-            lua_pushcclosure(state, value.ptr, value.upvalues.size)
+            lua_pushcclosure(state, value.ptr, value.upValues.size)
         }
         is LuaValue.Number -> lua_pushnumber(state, value.value)
         is LuaValue.LuaInt -> lua_pushinteger(state, value.value)

@@ -12,30 +12,24 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     internal val ll = LuaStateAndLib(
         luaL_newstate() ?: throw RuntimeException("Can't create Lua State"),
     )
+    private val contextPtr = StableRef.create(ll)
+
+    @OptIn(ExperimentalNativeApi::class)
+    private val cleaner = createCleaner(contextPtr) {
+        it.dispose()
+    }
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(closureGc, upvalues = emptyList()))
+        makeRef(LuaValue.FunctionValue(closureGc, upValues = listOf(LuaValue.LightUserData(contextPtr))))
     actual val userdataAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(userdataGc, upvalues = emptyList()))
+        makeRef(LuaValue.FunctionValue(userdataGc, upValues = listOf(LuaValue.LightUserData(contextPtr))))
+
 
     init {
         luaL_openlibs(ll.state)
     }
 
-    private val closed = AtomicInt(0)
-
     actual override fun close() {
-        if (!closed.compareAndSet(0, 1)) {
-            return
-        }
-        lua_close(ll.state)
-    }
-
-    @OptIn(ExperimentalNativeApi::class)
-    private val cleaner = createCleaner(ll to closed) { (state, closed) ->
-        if (closed.value != 0) {
-            lua_close(state.state)
-        }
     }
 
     actual operator fun get(name: String): LuaValue {
@@ -134,9 +128,31 @@ actual class LuaEngine actual constructor() : AutoCloseable {
         }
     }
 
+    actual fun createUserData(value: Any): LuaValue.UserData {
+        val ptr = StableRef.create(value)
+        try {
+            val mem = lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
+            Heap.setPtrFromPtr(mem, value = ptr.asCPointer())
+            val ret = LuaValue.UserData(ll.state.makeRef(), ll)
+            ret.metatable = LuaValue.of(
+                mapOf(LuaValue.of("__gc") to userdataAutoGcFunction)
+            )
+            return ret
+        } catch (e: Throwable) {
+            ptr.dispose()
+            throw e
+        }
+    }
+
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
         val ref = StableRef.create(func)
-        val luaFunc = LuaValue.FunctionValue(CLOSURE_FUNCTION, listOf(LuaValue.LightUserData(ref.asCPointer())))
+        val luaFunc = LuaValue.FunctionValue(
+            ptr = CLOSURE_FUNCTION,
+            upValues = listOf(
+                LuaValue.LightUserData(ref.asCPointer()),
+                LuaValue.LightUserData(contextPtr),
+            ),
+        )
         val metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
             "__gc".lua to closureAutoGcFunction
@@ -197,14 +213,14 @@ private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue
             val message =
                 if (lua_gettop(luaLib.state) == 1 && lua_isstring(luaLib.state, 1) != 0) {
                     val str = lua_tostring(luaLib.state, 1)
-                    lua_pop(luaLib.state,1)
+                    lua_pop(luaLib.state, 1)
                     str
                 } else {
                     null
                 }
             luaL_traceback(luaLib.state, luaLib.state, message, 1)
             val fullMessage = lua_tostring(luaLib.state, -1)
-            lua_pop(luaLib.state,1)
+            lua_pop(luaLib.state, 1)
             throw LuaException(fullMessage)
         }
 

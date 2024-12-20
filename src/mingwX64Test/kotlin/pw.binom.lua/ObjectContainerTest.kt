@@ -14,7 +14,7 @@ class ObjectContainerTest {
             emptyList()
         }
         assertEquals(CLOSURE_FUNCTION, myFunc.ptr)
-        assertEquals(1, myFunc.upvalues.size)
+        assertEquals(1, myFunc.upValues.size)
     }
 
     @Test
@@ -25,7 +25,7 @@ class ObjectContainerTest {
         }
         val closure = m.makeClosure(func)
         assertEquals(func, m.getClosure(closure))
-        assertEquals(func, m.get(closure.upvalues[0].checkedLightUserdata()))
+        assertEquals(func, m.get(closure.upValues[0].checkedLightUserdata()))
         assertTrue(m.remove(func))
         assertNull(m.getClosure(closure))
     }

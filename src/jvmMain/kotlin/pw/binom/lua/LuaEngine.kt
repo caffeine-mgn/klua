@@ -66,6 +66,9 @@ actual class LuaEngine : AutoCloseable {
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData =
         LuaValue.UserData(KLuaUserdata(value.value))
 
+    actual fun createUserData(value: Any): LuaValue.UserData =
+        LuaValue.UserData(KLuaUserdata(value))
+
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
         val metatable = LuaTable()
         metatable.rawset("__call", ClosureAdapter(func))

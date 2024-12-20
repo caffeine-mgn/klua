@@ -1,9 +1,18 @@
-@file:OptIn(ExperimentalForeignApi::class, ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class, ExperimentalForeignApi::class, ExperimentalForeignApi::class)
 
 package pw.binom.lua
+
+import kotlinx.cinterop.COpaquePointer
 import platform.internal_lua.*
 
 import kotlinx.cinterop.ExperimentalForeignApi
+
+fun LuaState.readLightUserData(index: Int): COpaquePointer? {
+    val index = this.absoluteStackValue(index)
+    val type = lua_type(this, index)
+    check(type != LUA_TLIGHTUSERDATA) { "Value is not light user data" }
+    return lua_touserdata(this, index)
+}
 
 internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
     val index = state.absoluteStackValue(index)
@@ -34,9 +43,10 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
                     }.reversed()
                 }
                 val funcPtr = lua_tocfunction(state, index)
-                LuaValue.FunctionValue(upvalues = upvalues, ptr = funcPtr)
+                LuaValue.FunctionValue(upValues = upvalues, ptr = funcPtr)
             }
         }
+
         LUA_TTABLE -> {
             if (ref) {
                 state.checkState {
@@ -57,7 +67,7 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
                         val key = readValue(-2, true)
                         val value = readValue(-1, true)
                         map[key] = value
-                        lua_pop(state,1)
+                        lua_pop(state, 1)
                     }
                 }
                 val metaTable = state.checkState {
@@ -79,10 +89,12 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
             val ref = state.makeRef(index, popValue = false)
             LuaValue.UserData(ref = ref, ll = this)
         }
+
         LUA_TLIGHTUSERDATA -> {
             val c = lua_touserdata(state, index)
             LuaValue.LightUserData(c)
         }
+
         else -> {
             val typename: String = "unknown" // TODO()//lua_typename1(this, type)?.toKString()
             throw RuntimeException("Unknown lua type: $typename (Code $type)")

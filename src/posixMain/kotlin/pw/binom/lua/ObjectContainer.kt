@@ -13,7 +13,7 @@ actual class ObjectContainer actual constructor() {
     private val objToPtr = HashMap<Any, COpaquePointer>()
 
     actual fun makeClosure(func: LuaFunction): LuaValue.FunctionValue =
-        LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upvalues = listOf(add(func)))
+        LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upValues = listOf(add(func)))
 
     actual fun add(data: Any?): LuaValue.LightUserData {
         if (data == null) {
@@ -43,10 +43,10 @@ actual class ObjectContainer actual constructor() {
     }
 
     actual fun removeClosure(data: LuaValue.FunctionValue): Boolean {
-        if (data.upvalues.size != 1) {
+        if (data.upValues.size != 1) {
             return false
         }
-        val func = data.upvalues[0]
+        val func = data.upValues[0]
         if (func is LuaValue.LightUserData && func.value is LuaFunction) {
             func.dispose()
             return true
@@ -55,10 +55,10 @@ actual class ObjectContainer actual constructor() {
     }
 
     actual fun getClosure(func: LuaValue.FunctionValue): LuaFunction? {
-        if (func.upvalues.size != 1) {
+        if (func.upValues.size != 1) {
             return null
         }
-        val ptr = func.upvalues[0].lightUserDataOrNull() ?: return null
+        val ptr = func.upValues[0].lightUserDataOrNull() ?: return null
         return get(ptr) as? LuaFunction
     }
 

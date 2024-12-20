@@ -37,6 +37,7 @@ expect class LuaEngine : AutoCloseable {
      * @return created useddata. Value of userdata is pointer of [value]
      */
     fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData
+    fun createUserData(value: Any): LuaValue.UserData
 
     /**
      * Creates new userdata with [value] as ptr. Also sets `metatable['__gc']` special method for
