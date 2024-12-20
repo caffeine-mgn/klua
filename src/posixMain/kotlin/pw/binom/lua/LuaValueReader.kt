@@ -6,7 +6,7 @@ import platform.internal_lua.*
 import kotlinx.cinterop.ExperimentalForeignApi
 
 internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
-    val index = absoluteStackValue(index)
+    val index = state.absoluteStackValue(index)
     val type = lua_type(state, index)
     return when (type) {
         LUA_TNONE, LUA_TNIL -> LuaValue.Nil
@@ -15,7 +15,7 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
         LUA_TSTRING -> LuaValue.String(lua_tostring(state, index) ?: "")
         LUA_TFUNCTION -> {
             if (ref) {
-                val ref = makeRef(index, popValue = false)
+                val ref = state.makeRef(index, popValue = false)
                 val ptr = lua_topointer(state, index)!!
                 LuaValue.FunctionRef(ref, ptr = ptr, ll = this)
             } else {
@@ -39,15 +39,15 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
         }
         LUA_TTABLE -> {
             if (ref) {
-                checkState {
+                state.checkState {
 //                    val ref = klua_get_value(this, index)!!
-                    val ref = makeRef(index, popValue = false)
+                    val ref = state.makeRef(index, popValue = false)
                     val ptr = lua_topointer(state, index)!!
                     LuaValue.TableRef(ref = ref, ptr = ptr, ll = this)
                 }
             } else {
                 val map = HashMap<LuaValue, LuaValue>()
-                checkState {
+                state.checkState {
                     lua_pushnil(state)
                     while (true) {
                         val c = lua_next(state, index)
@@ -60,7 +60,7 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
                         lua_pop(state,1)
                     }
                 }
-                val metaTable = checkState {
+                val metaTable = state.checkState {
                     val c = lua_getmetatable(state, index)
                     if (c != 0) {
                         val value = readValue(-1, true)
@@ -76,7 +76,7 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
 //        LUA_TUSERDATA1 -> TODO("User data not supported")
         LUA_TTHREAD -> TODO("Thread not supported")
         LUA_TUSERDATA -> {
-            val ref = makeRef(index, popValue = false)!!
+            val ref = state.makeRef(index, popValue = false)
             LuaValue.UserData(ref = ref, ll = this)
         }
         LUA_TLIGHTUSERDATA -> {

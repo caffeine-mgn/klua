@@ -53,7 +53,7 @@ typealias LuaState = CPointer<lua_State>
 
 @OptIn(ExperimentalNativeApi::class)
 internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any = createCleaner(state to ref) {
-    it.first.disposeRef(it.second)
+    it.first.state.disposeRef(it.second)
 }
 
 

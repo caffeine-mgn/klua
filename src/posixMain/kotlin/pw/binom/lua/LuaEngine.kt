@@ -40,7 +40,7 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual operator fun get(name: String): LuaValue {
-        ll.checkState {
+        ll.state.checkState {
             lua_getglobal(ll.state, name)
             val value = ll.readValue(-1, true)
             lua_pop(ll.state, 1)
@@ -49,7 +49,7 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual operator fun set(name: String, value: LuaValue) {
-        ll.checkState {
+        ll.state.checkState {
             ll.pushValue(value)
             lua_setglobal(ll.state, name)
         }
@@ -104,11 +104,11 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
-        ll.checkState {
+        ll.state.checkState {
             try {
                 ll.pushValue(value)
                 val ptr = lua_topointer(ll.state, -1)!!
-                val ref = ll.makeRef(popValue = true)
+                val ref = ll.state.makeRef(popValue = true)
                 return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
             } catch (e: Throwable) {
                 e.printStackTrace()
@@ -118,19 +118,19 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
-        ll.checkState {
+        ll.state.checkState {
             ll.pushValue(value)
             val ptr = lua_topointer(ll.state, -1)!!
-            val ref = ll.makeRef(popValue = true)
+            val ref = ll.state.makeRef(popValue = true)
             return LuaValue.TableRef(ref = ref, ptr = ptr, ll = ll)
         }
     }
 
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData {
-        ll.checkState {
+        ll.state.checkState {
             val mem = ll.lib.lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
             ll.lib.heap.setPtrFromPtr(mem, value = value.lightPtr)
-            val ret = LuaValue.UserData(ll.makeRef(), ll)
+            val ret = LuaValue.UserData(ll.state.makeRef(), ll)
             return ret
         }
     }
