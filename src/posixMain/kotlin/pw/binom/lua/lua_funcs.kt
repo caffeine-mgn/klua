@@ -30,7 +30,7 @@ internal inline fun <T> LuaState.checkState(func: () -> T): T {
     }
 }
 
-internal inline fun COpaquePointer?.strPtr() = this?.toLong()?.toString(16) ?: "0"
+internal inline fun COpaquePointer?.strPtr() = this?.toLong()?.toString(16)?.let { "0x$it" } ?: "0x0"
 
 internal fun LuaState.absoluteStackValue(index: Int) =
     if (index.absoluteValue <= 255 && index < 0) lua_gettop(this) + index + 1 else index

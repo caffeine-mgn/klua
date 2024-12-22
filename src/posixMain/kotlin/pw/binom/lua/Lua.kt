@@ -14,7 +14,7 @@ typealias lua_CFunction1 = CPointer<CFunction<(CPointer<lua_State>?) -> Int>>
 typealias LuaState = CPointer<lua_State>
 
 @OptIn(ExperimentalNativeApi::class, ExperimentalForeignApi::class)
-internal fun createCleaner1(state: LuaStateAndLib, ref: LuaRef): Any = createCleaner(state to ref) {
+internal fun createCleaner1(state: LuaContext, ref: LuaRef): Any = createCleaner(state to ref) {
     it.first.state.disposeRef(it.second)
 }
 
@@ -23,8 +23,8 @@ internal object Heap {
     val PTR_SIZE: Int
         get() = sizeOf<klua_pointer>().convert()
 
-    fun getPtrFromPtr(ptr: COpaquePointer): COpaquePointer? =
-        ptr.reinterpret<klua_pointer>().pointed.pointer
+    fun getPtrFromPtr(ptr: COpaquePointer?): COpaquePointer? =
+        ptr?.reinterpret<klua_pointer>()?.pointed?.pointer
 
     fun setPtrFromPtr(ptr: COpaquePointer, value: COpaquePointer?) {
         val c = ptr.reinterpret<klua_pointer>()

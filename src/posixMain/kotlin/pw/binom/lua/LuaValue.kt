@@ -6,7 +6,7 @@ import kotlinx.cinterop.*
 import platform.internal_lua.*
 
 actual sealed interface LuaValue {
-    actual class FunctionValue(val ptr: lua_CFunction1?, val upValues: List<LuaValue>) : LuaValue {
+    actual class FunctionValue(val ptr: lua_CFunction1?, val upValues: List<LuaValue> = emptyList()) : LuaValue {
         override fun toString(): kotlin.String = "function_value(${ptr.strPtr()}, $upValues)"
     }
 
@@ -17,7 +17,7 @@ actual sealed interface LuaValue {
 
     actual class UserData internal constructor(
         override val ref: LuaRef,
-        internal val ll: LuaStateAndLib,
+        internal val ll: LuaContext,
     ) : RefObject,
         Data {
         private val cleaner = createCleaner1(ll, ref)
@@ -137,7 +137,7 @@ actual sealed interface LuaValue {
     actual class TableRef internal constructor(
         override val ref: LuaRef,
         val ptr: COpaquePointer,
-        internal val ll: LuaStateAndLib,
+        internal val ll: LuaContext,
     ) : Table, RefObject {
         private val cleaner = createCleaner1(ll, ref)
 
@@ -262,7 +262,7 @@ actual sealed interface LuaValue {
     actual class FunctionRef internal constructor(
         override val ref: LuaRef,
         val ptr: COpaquePointer,
-        internal val ll: LuaStateAndLib,
+        internal val ll: LuaContext,
     ) : Ref, Callable {
         private val cleaner = createCleaner1(ll, ref)
 
@@ -381,7 +381,7 @@ actual sealed interface LuaValue {
     }
 }
 
-private fun getMetatable(ll: LuaStateAndLib, value: LuaValue.Meta): LuaValue {
+private fun getMetatable(ll: LuaContext, value: LuaValue.Meta): LuaValue {
     val table = ll.state.checkState {
         ll.pushValue(value)
         if (lua_getmetatable(ll.state, -1) != 0) {
@@ -396,7 +396,7 @@ private fun getMetatable(ll: LuaStateAndLib, value: LuaValue.Meta): LuaValue {
     return table
 }
 
-private fun setMetatable(ll: LuaStateAndLib, value: LuaValue.Meta, table: LuaValue) {
+private fun setMetatable(ll: LuaContext, value: LuaValue.Meta, table: LuaValue) {
     ll.state.checkState {
         ll.pushValue(value)
         ll.pushValue(table)
@@ -405,7 +405,7 @@ private fun setMetatable(ll: LuaStateAndLib, value: LuaValue.Meta, table: LuaVal
     }
 }
 
-private fun LuaValue.RefObject.callToString(ll: LuaStateAndLib): kotlin.String =
+private fun LuaValue.RefObject.callToString(ll: LuaContext): kotlin.String =
     ll.state.checkState {
         ll.pushValue(this)
         val str = luaL_tolstring(ll.state, -1, null)?.toKString()

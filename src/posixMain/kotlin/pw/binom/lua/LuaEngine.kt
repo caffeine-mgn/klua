@@ -3,16 +3,22 @@ package pw.binom.lua
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
 import platform.internal_lua.*
-import kotlin.concurrent.AtomicInt
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.createCleaner
 
 @OptIn(ExperimentalForeignApi::class)
 actual class LuaEngine actual constructor() : AutoCloseable {
-    internal val ll = LuaStateAndLib(
-        luaL_newstate() ?: throw RuntimeException("Can't create Lua State"),
-    )
+    companion object {
+//        const val STATE_PTR_NAME = "global_state"
+    }
+
+    internal val ll = LuaContext()
     private val contextPtr = StableRef.create(ll)
+
+    init {
+//        lua_pushlightuserdata(ll.state, contextPtr.asCPointer())
+//        lua_setglobal(ll.state, STATE_PTR_NAME)
+    }
 
     @OptIn(ExperimentalNativeApi::class)
     private val cleaner = createCleaner(contextPtr) {
@@ -20,14 +26,10 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(closureGc, upValues = listOf(LuaValue.LightUserData(contextPtr))))
+        makeRef(LuaValue.FunctionValue(closureGc))
     actual val userdataAutoGcFunction: LuaValue.FunctionRef =
         makeRef(LuaValue.FunctionValue(userdataGc, upValues = listOf(LuaValue.LightUserData(contextPtr))))
 
-
-    init {
-        luaL_openlibs(ll.state)
-    }
 
     actual override fun close() {
     }
@@ -131,11 +133,9 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     actual fun createUserData(value: Any): LuaValue.UserData {
         val ptr = StableRef.create(value)
         try {
-            val mem = lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
-            Heap.setPtrFromPtr(mem, value = ptr.asCPointer())
-            val ret = LuaValue.UserData(ll.state.makeRef(), ll)
+            val ret = createUserData(LuaValue.LightUserData(ptr.asCPointer()))
             ret.metatable = LuaValue.of(
-                mapOf(LuaValue.of("__gc") to userdataAutoGcFunction)
+                mapOf(LuaValue.of("__gc") to closureAutoGcFunction)
             )
             return ret
         } catch (e: Throwable) {
@@ -150,14 +150,14 @@ actual class LuaEngine actual constructor() : AutoCloseable {
             ptr = CLOSURE_FUNCTION,
             upValues = listOf(
                 LuaValue.LightUserData(ref.asCPointer()),
-                LuaValue.LightUserData(contextPtr),
+                LuaValue.LightUserData(contextPtr.asCPointer()),
             ),
         )
         val metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
             "__gc".lua to closureAutoGcFunction
         )
-        val userData = createUserData(LuaValue.LightUserData(AC_CLOSURE_PTR))
+        val userData = createUserData(LuaValue.LightUserData(ref.asCPointer()))
         userData.metatable = metatable
         return userData
     }
@@ -165,9 +165,9 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     actual fun setAC(userdata: LuaValue.UserData) {
         val table = userdata.metatable
         if (table is LuaValue.Table) {
-            table["__gc".lua] = userdataAutoGcFunction
+            table["__gc".lua] = closureAutoGcFunction
         } else {
-            userdata.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
+            userdata.metatable = LuaValue.TableValue("__gc".lua to closureAutoGcFunction)
         }
     }
 
@@ -189,7 +189,7 @@ actual class LuaEngine actual constructor() : AutoCloseable {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-internal fun LuaStateAndLib.callClosure(vararg args: LuaValue): List<LuaValue> {
+internal fun LuaContext.callClosure(vararg args: LuaValue): List<LuaValue> {
     args.forEach {
         pushValue(it)
     }
@@ -198,7 +198,7 @@ internal fun LuaStateAndLib.callClosure(vararg args: LuaValue): List<LuaValue> {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun pcallProcessing(luaLib: LuaStateAndLib, exeCode: Int): List<LuaValue> {
+private fun pcallProcessing(luaLib: LuaContext, exeCode: Int): List<LuaValue> {
     when (exeCode) {
         LUA_OK -> {
             val count = lua_gettop(luaLib.state)

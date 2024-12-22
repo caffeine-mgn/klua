@@ -7,16 +7,26 @@ import platform.internal_lua.*
 
 import kotlinx.cinterop.ExperimentalForeignApi
 
+fun LuaState.readUserData(index: Int): COpaquePointer? {
+    val index = this.absoluteStackValue(index)
+    val type = lua_type(this, index)
+    check(type == LUA_TUSERDATA) { "Value is not light user data" }
+    return Heap.getPtrFromPtr(lua_touserdata(this, index))
+}
+
 fun LuaState.readLightUserData(index: Int): COpaquePointer? {
     val index = this.absoluteStackValue(index)
     val type = lua_type(this, index)
-    check(type != LUA_TLIGHTUSERDATA) { "Value is not light user data" }
-    return lua_touserdata(this, index)
+    check(type == LUA_TLIGHTUSERDATA) { "Value is not light user data" }
+    return lua_touserdata(this, index)//?.let { Heap.getPtrFromPtr(it) }
 }
 
-internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
+internal fun LuaContext.readValue(index: Int, ref: Boolean): LuaValue {
+//    println("LuaValueReader #-2")
     val index = state.absoluteStackValue(index)
+//    println("LuaValueReader #-1")
     val type = lua_type(state, index)
+//    println("LuaValueReader #0")
     return when (type) {
         LUA_TNONE, LUA_TNIL -> LuaValue.Nil
         LUA_TNUMBER -> LuaValue.Number(lua_tonumberx(state, index, null))
@@ -86,7 +96,9 @@ internal fun LuaStateAndLib.readValue(index: Int, ref: Boolean): LuaValue {
 //        LUA_TUSERDATA1 -> TODO("User data not supported")
         LUA_TTHREAD -> TODO("Thread not supported")
         LUA_TUSERDATA -> {
+//            println("LuaValueReader #1")
             val ref = state.makeRef(index, popValue = false)
+//            println("LuaValueReader #2")
             LuaValue.UserData(ref = ref, ll = this)
         }
 

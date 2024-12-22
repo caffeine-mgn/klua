@@ -5,7 +5,7 @@ package pw.binom.lua
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.internal_lua.*
 
-internal fun LuaStateAndLib.pushValue(value: LuaValue) {
+internal fun LuaContext.pushValue(value: LuaValue) {
     when (value) {
         LuaValue.Nil,
         is LuaValue.Nil -> lua_pushnil(state)
