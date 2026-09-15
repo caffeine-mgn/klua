@@ -1,106 +1,180 @@
 package pw.binom.lua
 
-import org.luaj.vm2.LuaError
-import org.luaj.vm2.LuaTable
-import org.luaj.vm2.LuaUserdata
-import org.luaj.vm2.Varargs
-import org.luaj.vm2.lib.jse.JsePlatform
-
 actual class LuaEngine : AutoCloseable {
-    private val globals = JsePlatform.standardGlobals()
 
-    actual fun eval(text: String): List<LuaValue> =
-        try {
-            globals.load(text).invoke().toCommon()
-        } catch (e: LuaError) {
-            throw LuaException(e.message, e)
-        }
+    internal val ll: LuaContext = LuaContext()
+
+    actual val closureAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef { _ -> emptyList<LuaValue>() }
+    actual val userdataAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef { ctx ->
+        StaticRefs.dispose(LuaNative.toUserdata(ctx.state, -1))
+        emptyList()
+    }
+
+    private fun makeAutoGcRef(handler: LuaCallbackBridge): LuaValue.FunctionRef {
+        val id = LuaNative.nextCallbackId()
+        LuaNative.setCallback(id, handler)
+        LuaNative.pushCFunction(ll.state, id)
+        val ptr = LuaNative.toPointer(ll.state, -1)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        return LuaValue.FunctionRef(refId, ptr, ll)
+    }
 
     actual override fun close() {
+        ll.close()
     }
 
-    actual val closureAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(ClosureAdapter { emptyList() }))
-
-    actual val userdataAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(ClosureAdapter { emptyList() }))
-
-    actual operator fun get(name: String): LuaValue =
-        LuaValue.of(globals.get(name), ref = true)
+    actual operator fun get(name: String): LuaValue {
+        LuaNative.getGlobal(ll.state, name)
+        val value = ll.readValue(-1, true)
+        LuaNative.pop(ll.state, 1)
+        return value
+    }
 
     actual operator fun set(name: String, value: LuaValue) {
-        globals.set(name, value.makeNative())
+        pushValue(ll.state, value)
+        LuaNative.setGlobal(ll.state, name)
     }
 
-    actual fun call(
-        functionName: String,
-        vararg args: LuaValue,
-    ): List<LuaValue> {
-        val func = globals.get(functionName)
-        try {
-            return func.invoke(args.toNative()).toCommon()
-        } catch (e: LuaError) {
-            throw LuaException(e.message)
+    actual fun eval(text: String): List<LuaValue> {
+        val r = LuaNative.loadString(ll.state, text)
+        when (r) {
+            0 -> {}
+            4 -> {
+                val msg = LuaNative.toString(ll.state, -1)
+                LuaNative.pop(ll.state, 1)
+                throw LuaException(msg ?: "Compile error")
+            }
+            5 -> throw LuaException("LUA_ERRMEM")
+            else -> throw LuaException("Can't eval text \"$text\" (status=$r)")
         }
+        val exitCode = LuaNative.pcall(ll.state, 0, -1, 0)
+        return pcallProcessing(ll, exitCode)
     }
 
-    actual fun call(
-        value: LuaValue,
-        vararg args: LuaValue,
-    ): List<LuaValue> =
-        try {
-            value.makeNative().invoke(args.toNative()).toCommon()
-        } catch (e: LuaError) {
-            throw LuaException(e.message)
+    actual fun call(functionName: String, vararg args: LuaValue): List<LuaValue> {
+        LuaNative.getGlobal(ll.state, functionName)
+        if (LuaNative.isNil(ll.state, -1)) {
+            LuaNative.pop(ll.state, 1)
+            throw LuaException("Function \"$functionName\" not found")
         }
+        if (!LuaNative.isFunction(ll.state, -1)) {
+            LuaNative.pop(ll.state, 1)
+            throw LuaException("\"$functionName\" is not a function")
+        }
+        args.forEach { pushValue(ll.state, it) }
+        val r = LuaNative.pcall(ll.state, args.size, -1, 0)
+        return pcallProcessing(ll, r)
+    }
 
-    actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef =
-        LuaValue.FunctionRef(value.value)
+    actual fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue> {
+        pushValue(ll.state, value)
+        args.forEach { pushValue(ll.state, it) }
+        val r = LuaNative.pcall(ll.state, args.size, -1, 0)
+        return pcallProcessing(ll, r)
+    }
+
+    actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
+        // Re-push the closure and grab a stable registry reference so Lua won't GC it while
+        // a FunctionRef is alive in Kotlin.
+        pushValue(ll.state, value)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        val ptr = LuaNative.toPointer(ll.state, -1)
+        LuaNative.pop(ll.state, 1)
+        return LuaValue.FunctionRef(refId, ptr, ll)
+    }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
-        val t = LuaValue.TableRef(value.makeNative() as KLuaTable)
-        t.metatable = value.metatable
-        return t
+        pushValue(ll.state, value)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        val ptr = LuaNative.toPointer(ll.state, -1)
+        LuaNative.pop(ll.state, 1)
+        return LuaValue.TableRef(refId, ptr, ll)
     }
 
-    actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData =
-        LuaValue.UserData(KLuaUserdata(value.value))
+    actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData {
+        val mem = LuaNative.newUserdata(ll.state, PTR_SIZE)
+        StaticRefs.store(mem, value.ptr?.let { StaticRefs.get(it) })
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        return LuaValue.UserData(refId, ll)
+    }
 
-    actual fun createUserData(value: Any): LuaValue.UserData =
-        LuaValue.UserData(KLuaUserdata(value))
+    actual fun createUserData(value: Any): LuaValue.UserData {
+        val ptr = StaticRefs.intern(value)
+        val mem = LuaNative.newUserdata(ll.state, PTR_SIZE)
+        StaticRefs.store(mem, value)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        val ud = LuaValue.UserData(refId, ll)
+        ud.metatable = LuaValue.TableValue("__gc".lua to closureAutoGcFunction)
+        return ud
+    }
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
-        val metatable = LuaTable()
-        metatable.rawset("__call", ClosureAdapter(func))
-        return LuaValue.UserData(KLuaUserdata(AC_CLOSURE_PTR, metatable))
+        val callbackId = LuaNative.nextCallbackId()
+        LuaNative.setCallback(callbackId, LuaCallbackBridge { ctx ->
+            // __call metamethod: index 1 is the userdata (self), real args start at 2.
+            val top = LuaNative.getTop(ctx.state)
+            val args = (2..top).map { ctx.readValue(it, true) }
+            LuaNative.pop(ctx.state, top)
+            func.call(args)
+        })
+        // Push the cclosure and grab a registry reference so the GC won't reap it.
+        LuaNative.pushCFunction(ll.state, callbackId)
+        val fnRef = LuaValue.FunctionRef(
+            refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX),
+            ptr = LuaNative.toPointer(ll.state, -1),
+            ll = ll,
+        )
+        LuaNative.pop(ll.state, 1)
+        val ud = createUserData(LuaValue.LightUserData(null))
+        val metatable = LuaValue.TableValue(
+            "__call".lua to fnRef,
+            "__gc".lua to closureAutoGcFunction,
+        )
+        ud.metatable = metatable
+        return ud
     }
 
     actual fun setAC(userdata: LuaValue.UserData) {
         val table = userdata.metatable
-        if (table is LuaValue.TableValue) {
-            table["__gc".lua] = LuaValue.Nil
+        if (table is LuaValue.Table) {
+            table["__gc".lua] = closureAutoGcFunction
         } else {
-            userdata.metatable = LuaValue.TableValue()
+            userdata.metatable = LuaValue.TableValue("__gc".lua to closureAutoGcFunction)
         }
     }
 
-    actual fun createAC(value: LuaValue.LightUserData): LuaValue.UserData =
-        LuaValue.UserData(KLuaUserdata(value, LuaTable()))
+    actual fun createAC(value: LuaValue.LightUserData): LuaValue.UserData {
+        val ud = createUserData(value)
+        setAC(ud)
+        return ud
+    }
 
-    actual fun createAC(value: Any?): LuaValue.UserData =
-        LuaValue.UserData(KLuaUserdata(value, LuaTable()))
-}
+    actual fun createAC(value: Any?): LuaValue.UserData {
+        val ptr = value?.let { StaticRefs.intern(it) }
+        val ud = createAC(LuaValue.LightUserData(ptr))
+        return ud
+    }
 
-internal val AC_CLOSURE_PTR = Any()
-
-internal fun Varargs.toCommon(): List<LuaValue> {
-    return (1..narg()).mapNotNull {
-        val item = arg(it)
-        if (item is LuaUserdata && item.m_instance === AC_CLOSURE_PTR) {
-            return@mapNotNull null
-        }
-        LuaValue.of(item, ref = true)
+    companion object {
+        private const val PTR_SIZE = 8
     }
 }
 
-internal fun Array<out LuaValue>.toNative() = map { it.makeNative() }.toTypedArray()
+internal fun pcallProcessing(ll: LuaContext, exeCode: Int): List<LuaValue> {
+    return when (exeCode) {
+        0 -> {
+            val count = LuaNative.getTop(ll.state)
+            val list = (1..count).map { ll.readValue(it, true) }
+            LuaNative.pop(ll.state, count)
+            list
+        }
+        2 -> {
+            val msg = LuaNative.toString(ll.state, -1) ?: "runtime error"
+            LuaNative.pop(ll.state, 1)
+            throw LuaException(msg)
+        }
+        4 -> throw RuntimeException("memory allocation error")
+        5 -> throw RuntimeException("error while running the message handler")
+        else -> throw RuntimeException("Unknown pcall status: $exeCode")
+    }
+}

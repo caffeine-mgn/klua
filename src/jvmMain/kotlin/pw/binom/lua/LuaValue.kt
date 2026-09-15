@@ -1,55 +1,66 @@
 package pw.binom.lua
 
-import org.luaj.vm2.*
-import org.luaj.vm2.LuaFunction
-import java.lang.IllegalArgumentException
-import org.luaj.vm2.LuaValue as LuaJValue
-
 actual sealed interface LuaValue {
-
-    fun makeNative(): LuaJValue
-//    val native: LuaJValue
-
-    actual class FunctionValue(val value: LuaFunction) : LuaValue {
-        override fun makeNative(): LuaJValue = value
-        override fun toString(): kotlin.String = "function_value(${value.hashCode().toUInt().toString(16)})"
+    actual class FunctionValue(val callbackId: Int) : LuaValue {
+        override fun toString(): kotlin.String = "function_value($callbackId)"
     }
 
-    actual class FunctionRef(val value: LuaFunction) : Ref, Callable {
-        actual override fun call(vararg args: LuaValue): List<LuaValue> =
-            try {
-                value.invoke(args.toNative()).toCommon()
-            } catch (e: LuaError) {
-                throw LuaException(e.message)
+    actual interface Data : LuaValue {
+        actual val value: Any?
+    }
+
+    actual class UserData internal constructor(
+        override val refId: Int,
+        internal val ll: LuaContext,
+    ) : RefObject, Data {
+
+        val ptr: Long?
+            get() {
+                ll.push(this)
+                val p = LuaNative.userdataPtr(ll.state, -1)
+                LuaNative.pop(ll.state, 1)
+                return if (p == 0L) null else p
             }
 
-        override fun makeNative(): org.luaj.vm2.LuaValue = value
-
-        override val native: org.luaj.vm2.LuaValue
-            get() = value
-
-        override fun toString(): kotlin.String = "function(${value.hashCode().toUInt().toString(16)})"
-        actual fun toValue(): FunctionValue = FunctionValue(value)
-        override fun equals(other: Any?): kotlin.Boolean {
-            if (other !is FunctionRef) {
-                return false
+        actual override val value: Any?
+            get() {
+                val p = ptr ?: return null
+                return StaticRefs.get(p)
             }
-            return other.value === value
+
+        actual override var metatable: LuaValue
+            get() = getMetatable(ll, this)
+            set(value) = setMetatable(ll, this, value)
+
+        actual override fun call(vararg args: LuaValue): List<LuaValue> {
+            ll.push(this)
+            return pcallCall(ll, args.toList())
         }
 
-        override fun hashCode(): Int = value.hashCode()
+        actual val toLightUserData: LightUserData get() = LightUserData(ptr)
+
+        actual override fun callToString() = callToString(ll)
+        override fun toString(): kotlin.String = "userdata(${ptr?.toString(16)})"
+
+        fun dispose() {
+            val p = ptr ?: return
+            StaticRefs.dispose(p)
+            LuaNative.unref(ll.state, LUA_REGISTRYINDEX, refId)
+        }
+    }
+
+    actual class LightUserData(val ptr: Long?) : Data {
+        actual constructor(value: Any?) : this(StaticRefs.intern(value))
+        actual override val value: Any? get() = StaticRefs.get(ptr)
+        fun dispose() { StaticRefs.dispose(ptr) }
+        override fun toString(): kotlin.String = "lightuserdata(${ptr?.toString(16) ?: "0x0"})"
     }
 
     actual class Number actual constructor(actual val value: Double) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun makeNative(): LuaJValue =
-            LuaJValue.valueOf(value)
-
         override fun equals(other: Any?): kotlin.Boolean {
-            if (other == null || other !is Number) {
-                return false
-            }
+            if (other == null || other !is Number) return false
             return value == other.value
         }
     }
@@ -57,31 +68,23 @@ actual sealed interface LuaValue {
     actual class LuaInt actual constructor(actual val value: Long) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
-        override fun makeNative(): LuaJValue =
-            LuaJValue.valueOf(value.toInt())
+        override fun equals(other: Any?): kotlin.Boolean = other is LuaInt && value == other.value
     }
 
     actual class Boolean actual constructor(actual val value: kotlin.Boolean) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
-        override fun makeNative(): LuaJValue =
-            LuaJValue.valueOf(value)
+        override fun equals(other: Any?): kotlin.Boolean = other is Boolean && value == other.value
     }
 
     actual class String actual constructor(actual val value: kotlin.String) : LuaValue {
         override fun toString(): kotlin.String = value
         override fun hashCode(): Int = value.hashCode()
         override fun equals(other: Any?): kotlin.Boolean = other is String && value == other.value
-        override fun makeNative(): LuaJValue =
-            LuaJValue.valueOf(value)
     }
 
-    actual object Nil : LuaValue {
-        override fun toString(): kotlin.String = "nil"
-        override fun makeNative(): LuaJValue =
-            LuaJValue.NIL
+    actual sealed interface Ref : LuaValue {
+        val refId: Int
     }
 
     actual interface Table : LuaValue {
@@ -96,14 +99,6 @@ actual sealed interface LuaValue {
         actual fun toList(): List<LuaValue>
     }
 
-    actual sealed interface Ref : LuaValue {
-        val native: org.luaj.vm2.LuaValue
-    }
-
-    actual interface Callable : LuaValue {
-        actual fun call(vararg args: LuaValue): List<LuaValue>
-    }
-
     actual interface Meta : LuaValue {
         actual var metatable: LuaValue
     }
@@ -112,140 +107,146 @@ actual sealed interface LuaValue {
         actual fun callToString(): kotlin.String
     }
 
-    actual class TableRef(override val native: LuaTable) : Table, RefObject {
-        actual override fun toValue(): TableValue =
-            TableValue(native.toMap(), metatable)
+    actual interface Callable : LuaValue {
+        actual fun call(vararg args: LuaValue): List<LuaValue>
+    }
 
-        actual override fun toList(): List<LuaValue> =
-            (1..rawSize).map {
-                get(of(it.toLong()))
+    actual class TableRef internal constructor(
+        override val refId: Int,
+        val ptr: Long,
+        internal val ll: LuaContext,
+    ) : Table, RefObject {
+
+        actual override operator fun get(key: LuaValue): LuaValue {
+            ll.push(this)
+            pushValue(ll.state, key)
+            LuaNative.getTable(ll.state, -2)
+            val v = ll.readValue(-1, true)
+            LuaNative.pop(ll.state, 2)
+            return v
+        }
+
+        actual override operator fun set(key: LuaValue, value: LuaValue) {
+            ll.push(this)
+            pushValue(ll.state, key)
+            pushValue(ll.state, value)
+            LuaNative.setTable(ll.state, -3)
+            LuaNative.pop(ll.state, 1)
+        }
+
+        actual override fun rawGet(key: LuaValue): LuaValue {
+            ll.push(this)
+            pushValue(ll.state, key)
+            LuaNative.rawGet(ll.state, -2)
+            val v = ll.readValue(-1, true)
+            LuaNative.pop(ll.state, 1)
+            return v
+        }
+
+        actual override fun rawSet(key: LuaValue, value: LuaValue) {
+            ll.push(this)
+            pushValue(ll.state, key)
+            pushValue(ll.state, value)
+            LuaNative.rawSet(ll.state, -3)
+            LuaNative.pop(ll.state, 1)
+        }
+
+        actual override val size: LuaValue
+            get() {
+                ll.push(this)
+                LuaNative.len(ll.state, -1)
+                val v = ll.readValue(-1, true)
+                LuaNative.pop(ll.state, 1)
+                return v
             }
 
         actual override val rawSize: Int
-            get() = native.rawlen()
+            get() {
+                ll.push(this)
+                val n = LuaNative.rawLen(ll.state, -1).toInt()
+                LuaNative.pop(ll.state, 1)
+                return n
+            }
 
-        actual override fun toMap(): Map<LuaValue, LuaValue> = native.toMap()
-        actual override fun rawGet(key: LuaValue): LuaValue = of(native.rawget(key.makeNative()), ref = true)
+        actual override fun toMap(): Map<LuaValue, LuaValue> = toValue().toMap()
 
-        actual override fun rawSet(key: LuaValue, value: LuaValue) {
-            native.rawset(key.makeNative(), value.makeNative())
+        actual override fun call(vararg args: LuaValue): List<LuaValue> {
+            ll.push(this)
+            return pcallCall(ll, args.toList())
         }
-
-        actual override fun set(key: LuaValue, value: LuaValue) {
-            native.set(key.makeNative(), value.makeNative())
-        }
-
-        actual override fun get(key: LuaValue): LuaValue =
-            of(native.get(key.makeNative()), ref = true)
 
         actual override var metatable: LuaValue
-            get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
-            set(value) {
-                native.setmetatable(value.makeNative())
-            }
+            get() = getMetatable(ll, this)
+            set(value) = setMetatable(ll, this, value)
 
-        actual override fun call(vararg args: LuaValue): List<LuaValue> =
-            try {
-                native.invoke(args.toNative()).toCommon()
-            } catch (e: LuaError) {
-                throw LuaException(e.message)
-            }
+        actual override fun callToString() = callToString(ll)
 
-        actual override fun callToString(): kotlin.String =
-            native.tostring().checkjstring()
+        actual override fun toValue(): TableValue {
+            ll.push(this)
+            val r = ll.readValue(-1, false) as TableValue
+            LuaNative.pop(ll.state, 1)
+            return r
+        }
 
-        override fun makeNative(): LuaJValue = native
-        actual override val size
-            get() = of(native.len(), ref = true)
+        actual override fun toList(): List<LuaValue> = (1..rawSize).map { get(of(it.toLong())) }
 
-        override fun toString(): kotlin.String = "table(${native.hashCode().toUInt().toString(16)})"
+        override fun equals(other: Any?): kotlin.Boolean = other is TableRef && ptr == other.ptr
+        override fun hashCode(): Int = ptr.hashCode()
+        override fun toString(): kotlin.String = "table(${ptr.toString(16)})"
     }
 
-    actual class TableValue(val map: HashMap<LuaValue, LuaValue>, actual override var metatable: LuaValue) :
-        LuaValue,
-        Table,
-        Meta {
-        actual override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
-        actual override fun rawSet(key: LuaValue, value: LuaValue) {
-            if (value is Nil) {
-                map.remove(key)
-            } else {
-                map[key] = value
-            }
+    actual class FunctionRef internal constructor(
+        override val refId: Int,
+        val ptr: Long,
+        internal val ll: LuaContext,
+    ) : Ref, Callable {
+        override fun toString(): kotlin.String = "function(${ptr.toString(16)})"
+
+        actual override fun call(vararg args: LuaValue): List<LuaValue> {
+            ll.push(this)
+            return pcallCall(ll, args.toList())
         }
 
-        actual override fun set(key: LuaValue, value: LuaValue) {
-            rawSet(key, value)
+        actual fun toValue(): FunctionValue {
+            ll.push(this)
+            val r = ll.readValue(-1, false) as FunctionValue
+            LuaNative.pop(ll.state, 1)
+            return r
         }
 
-        actual override fun get(key: LuaValue): LuaValue =
-            rawGet(key)
+        override fun equals(other: Any?): kotlin.Boolean = other is FunctionRef && refId == other.refId
+        override fun hashCode(): Int = refId
+    }
 
-        actual override fun toValue(): TableValue = this
-        actual override fun toList(): List<LuaValue> =
-            (1..rawSize).map {
-                map[of(it.toLong())] ?: Nil
-            }
-
-        override fun makeNative(): org.luaj.vm2.LuaValue {
-            val t = map.toNative()
-            t.setmetatable(metatable.makeNative())
-            return t
-        }
-
+    actual class TableValue constructor(
+        val map: HashMap<LuaValue, LuaValue>,
+        actual override var metatable: LuaValue,
+    ) : LuaValue, Table, Meta {
         actual constructor(map: Map<LuaValue, LuaValue>) : this(HashMap(map), Nil)
         actual constructor(vararg keys: Pair<LuaValue, LuaValue>) : this(keys.toMap())
-        actual constructor() : this(emptyMap())
+        actual constructor() : this(HashMap(), Nil)
 
         override fun toString(): kotlin.String =
-            if (metatable == Nil) {
-                "table_value(${toMap()})"
-            } else {
-                "table_value(${toMap()}, metatable: $metatable)"
-            }
+            if (metatable == Nil) "table_value($map)" else "table_value($map, metatable: $metatable)"
 
-        actual override val rawSize: Int
-            get() = map.size
-        actual override val size: LuaValue
-            get() = LuaInt(rawSize.toLong())
+        actual override val rawSize: Int get() = map.size
+        actual override val size: LuaValue get() = LuaInt(rawSize.toLong())
 
-        actual override fun toMap(): Map<LuaValue, LuaValue> =
-            map
+        actual override fun rawGet(key: LuaValue): LuaValue = map[key] ?: Nil
+        actual override fun rawSet(key: LuaValue, value: LuaValue) {
+            if (value is Nil) map.remove(key) else map[key] = value
+        }
+
+        actual override fun set(key: LuaValue, value: LuaValue) { rawSet(key, value) }
+        actual override fun get(key: LuaValue): LuaValue = rawGet(key)
+        actual override fun toValue(): TableValue = this
+
+        actual override fun toList(): List<LuaValue> = (1..rawSize).map { map[of(it.toLong())] ?: Nil }
+        actual override fun toMap(): Map<LuaValue, LuaValue> = map
     }
 
-    actual interface Data : LuaValue {
-        actual val value: Any?
-    }
-
-    actual class UserData(override val native: LuaUserdata) : RefObject, Data {
-        actual override fun call(vararg args: LuaValue): List<LuaValue> =
-            try {
-                native.invoke(args.toNative()).toCommon()
-            } catch (e: LuaError) {
-                throw LuaException(e.message)
-            }
-
-        actual override var metatable: LuaValue
-            get() = of(native.getmetatable() ?: LuaJValue.NIL, ref = true)
-            set(value) {
-                native.setmetatable(value.makeNative())
-            }
-        actual override val value: Any?
-            get() = native.m_instance
-
-        override fun makeNative(): org.luaj.vm2.LuaValue = native
-        actual val toLightUserData: LightUserData
-            get() = LightUserData(value)
-
-        override fun toString(): kotlin.String = "userdata(${native.hashCode().toUInt().toString(16)})"
-        actual override fun callToString(): kotlin.String = native.tostring().checkjstring()
-    }
-
-    actual class LightUserData actual constructor(actual override val value: Any?) : Data {
-        override fun makeNative(): org.luaj.vm2.LuaValue =
-            LuaJLightUserdata(value)
-
-        override fun toString(): kotlin.String = "lightuserdata(${value?.hashCode()?.toUInt()?.toString(16) ?: 0})"
+    actual object Nil : LuaValue {
+        override fun toString(): kotlin.String = "nil"
     }
 
     actual companion object {
@@ -253,92 +254,75 @@ actual sealed interface LuaValue {
         actual fun of(value: Long): LuaInt = LuaInt(value)
         actual fun of(value: kotlin.Boolean): Boolean = Boolean(value)
         actual fun of(value: kotlin.String): String = String(value)
-        actual fun of(
-            table: Map<LuaValue, LuaValue>,
-            metatable: LuaValue,
-        ): TableValue =
-            TableValue(HashMap(table), metatable)
-
-        fun of(value: LuaJValue, ref: kotlin.Boolean): LuaValue {
-            return when (value.type()) {
-                LuaJValue.TNUMBER -> Number(value.checkdouble())
-                LuaJValue.TINT -> LuaInt(value.checkint().toLong())
-                LuaJValue.TBOOLEAN -> Boolean(value.checkboolean())
-                LuaJValue.TSTRING -> String(value.checkjstring())
-                LuaJLightUserdata.TYPE -> LightUserData(value.checkuserdata())
-                LuaJValue.TUSERDATA -> UserData(value as LuaUserdata)
-                LuaJValue.TTABLE -> {
-                    if (ref) {
-                        TableRef(value.checktable())
-                    } else {
-                        val v = TableValue(value.checktable().toMap())
-                        v.metatable = of(value.getmetatable(), ref = true)
-                        v
-                    }
-                }
-
-                LuaJValue.TFUNCTION -> {
-                    if (ref) {
-                        FunctionRef(value.checkfunction())
-                    } else {
-                        FunctionValue(value.checkfunction())
-                    }
-                }
-
-                LuaJValue.TNIL -> Nil
-                else -> throw IllegalArgumentException("Unknown type ${value.typename()}")
-            }
-        }
-
         actual fun of(table: Map<LuaValue, LuaValue>): TableValue = TableValue(table)
+        actual fun of(table: Map<LuaValue, LuaValue>, metatable: LuaValue): TableValue =
+            TableValue(HashMap(table), metatable)
         actual fun of(table: List<LuaValue>): TableValue {
-            val result = HashMap<LuaValue, LuaValue>()
-            table.forEachIndexed { index, luaValue ->
-                result[of(index.toLong() + 1)] = luaValue
-            }
-            return TableValue(result)
+            val m = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { i, v -> m[of(i.toLong() + 1)] = v }
+            return TableValue(m)
         }
-
         actual fun of(table: Array<LuaValue>): TableValue {
-            val result = HashMap<LuaValue, LuaValue>()
-            table.forEachIndexed { index, luaValue ->
-                result[of(index.toLong() + 1)] = luaValue
-            }
-            return TableValue(result)
+            val m = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { i, v -> m[of(i.toLong() + 1)] = v }
+            return TableValue(m)
         }
-
-        actual fun of(
-            table: List<LuaValue>,
-            metatable: LuaValue,
-        ): TableValue {
-            val result = HashMap<LuaValue, LuaValue>()
-            table.forEachIndexed { index, luaValue ->
-                result[of(index.toLong() + 1)] = luaValue
-            }
-            return TableValue(result, metatable)
+        actual fun of(table: List<LuaValue>, metatable: LuaValue): TableValue {
+            val m = HashMap<LuaValue, LuaValue>()
+            table.forEachIndexed { i, v -> m[of(i.toLong() + 1)] = v }
+            return TableValue(m, metatable)
         }
     }
 }
 
-internal fun Map<LuaValue, LuaValue>.toNative(): LuaTable {
-    val named = entries.flatMap { listOf(it.key.makeNative(), it.value.makeNative()) }.toTypedArray()
-    return KLuaTable(named, emptyArray())
-//    forEach {
-//        t.rawset(it.key.makeNative(), it.value.makeNative())
-//    }
-//    return t
+internal fun getMetatable(ll: LuaContext, value: LuaValue.Meta): LuaValue {
+    ll.push(value)
+    return if (LuaNative.getMetatable(ll.state, -1) != 0) {
+        val s = ll.readValue(-1, true)
+        LuaNative.pop(ll.state, 2)
+        s
+    } else {
+        LuaNative.pop(ll.state, 1)
+        LuaValue.Nil
+    }
 }
 
-internal fun LuaTable.toMap(): HashMap<LuaValue, LuaValue> {
-    var key: LuaJValue = LuaJValue.NIL
-    val map = HashMap<LuaValue, LuaValue>()
-    do {
-        val next = next(key)
-        if (next == LuaJValue.NIL) {
-            break
+internal fun setMetatable(ll: LuaContext, value: LuaValue.Meta, table: LuaValue) {
+    ll.push(value)
+    pushValue(ll.state, table)
+    LuaNative.setMetatable(ll.state, -2)
+    LuaNative.pop(ll.state, 1)
+}
+
+internal fun LuaValue.RefObject.callToString(ll: LuaContext): kotlin.String {
+    ll.push(this)
+    val s = LuaNative.toLString(ll.state, -1)
+    LuaNative.pop(ll.state, 1)
+    return s ?: ""
+}
+
+internal fun LuaContext.push(value: LuaValue) {
+    pushValue(state, value)
+}
+
+internal fun pcallCall(ll: LuaContext, args: List<LuaValue>): List<LuaValue> {
+    val topBefore = LuaNative.getTop(ll.state)
+    args.forEach { pushValue(ll.state, it) }
+    val r = LuaNative.pcall(ll.state, args.size, -1, 0)
+    when (r) {
+        0 -> {
+            val count = LuaNative.getTop(ll.state) - topBefore + 1
+            val list = (1..count).map { ll.readValue(it, true) }
+            LuaNative.pop(ll.state, count)
+            return list
         }
-        key = next.arg(1)
-        map[LuaValue.of(next.arg(1), ref = true)] = LuaValue.of(next.arg(2), ref = true)
-    } while (true)
-    return map
+        4 -> {
+            val msg = LuaNative.toString(ll.state, -1) ?: "runtime error"
+            LuaNative.pop(ll.state, 1)
+            throw LuaException(msg)
+        }
+        5 -> throw RuntimeException("memory allocation error")
+        6 -> throw RuntimeException("error while running the message handler")
+        else -> throw RuntimeException("Unknown pcall status: $r")
+    }
 }

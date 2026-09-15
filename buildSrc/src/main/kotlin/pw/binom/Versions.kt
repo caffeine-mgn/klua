@@ -5,5 +5,5 @@ import org.gradle.api.Project
 
 object Versions {
     val LIB_VERSION = "0.1.1"
-    val KOTLIN_VERSION = "1.7.0"
+    val KOTLIN_VERSION = "2.4.20"
 }
