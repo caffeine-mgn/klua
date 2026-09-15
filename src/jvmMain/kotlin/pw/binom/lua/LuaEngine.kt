@@ -74,20 +74,19 @@ actual class LuaEngine : AutoCloseable {
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
-        // Re-push the closure and grab a stable registry reference so Lua won't GC it while
-        // a FunctionRef is alive in Kotlin.
+        // Re-push the closure, then capture its pointer and store a stable registry
+        // reference in that order — luaL_ref() POPS the value, so getting the pointer
+        // afterwards would read the value below the just-pushed one.
         pushValue(ll.state, value)
-        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         val ptr = LuaNative.toPointer(ll.state, -1)
-        LuaNative.pop(ll.state, 1)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         return LuaValue.FunctionRef(refId, ptr, ll)
     }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
         pushValue(ll.state, value)
-        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         val ptr = LuaNative.toPointer(ll.state, -1)
-        LuaNative.pop(ll.state, 1)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         return LuaValue.TableRef(refId, ptr, ll)
     }
 
@@ -117,14 +116,14 @@ actual class LuaEngine : AutoCloseable {
             LuaNative.pop(ctx.state, top)
             func.call(args)
         })
-        // Push the cclosure and grab a registry reference so the GC won't reap it.
+        // Push the cclosure, capture the pointer at -1, *then* ref() which pops it.
         LuaNative.pushCFunction(ll.state, callbackId)
+        val ptr = LuaNative.toPointer(ll.state, -1)
         val fnRef = LuaValue.FunctionRef(
             refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX),
-            ptr = LuaNative.toPointer(ll.state, -1),
+            ptr = ptr,
             ll = ll,
         )
-        LuaNative.pop(ll.state, 1)
         val ud = createUserData(LuaValue.LightUserData(null))
         val metatable = LuaValue.TableValue(
             "__call".lua to fnRef,
