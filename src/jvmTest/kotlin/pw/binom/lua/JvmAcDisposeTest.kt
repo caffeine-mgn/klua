@@ -10,6 +10,9 @@ import kotlin.test.assertEquals
 
 class JvmAcDisposeTest {
 
+    /** JVM-test hook for LuaNative.callbacks.size — the bridge registry. */
+    private fun bridgeCount(): Int = LuaNative.callbackCount
+
     @Test
     fun manualDisposeWorks() {
         val engine = LuaEngine()
@@ -126,6 +129,41 @@ class JvmAcDisposeTest {
             "(baseline=$baseline, after=$after, delta=${after - baseline}). " +
             "Each read of a table/function from Lua leaks a registry slot — " +
             "the Cleaner pattern on TableRef/FunctionRef is broken.")
+    }
+
+    /**
+     * Regression guard for the [ObjectContainer] bridge leak: every
+     * `makeClosure` registered an entry in the JVM-global [LuaNative.callbacks]
+     * map, and prior to this commit nothing removed them when the container
+     * was GC'd. The bridge map would grow unboundedly across many engines.
+     *
+     * We loop create+drop on a fresh ObjectContainer many times and assert
+     * the callback map size stays near the baseline (engine-init entries).
+     */
+    @Test
+    fun objectContainerBridgesDoNotLeakIntoCallbacksMap() {
+        val engine = LuaEngine()
+        val baseline = bridgeCount()
+        fun makeAndDrop() {
+            val oc = ObjectContainer()
+            for (i in 1..10) {
+                engine["c$i"] = oc.makeClosure { emptyList() }
+            }
+            engine.eval("c1 = nil; c2 = nil; c3 = nil; c4 = nil; c5 = nil; " +
+                "c6 = nil; c7 = nil; c8 = nil; c9 = nil; c10 = nil")
+        }
+        repeat(100) { makeAndDrop() }
+        for (pass in 1..50) {
+            System.gc()
+            System.runFinalization()
+            Thread.sleep(20)
+            if (bridgeCount() <= baseline + 5) break  // engine-init keepalive slack
+        }
+        val after = bridgeCount()
+        assertTrue(after <= baseline + 5,
+            "LuaNative.callbacks grew under create+drop loop " +
+            "(baseline=$baseline, after=$after, delta=${after - baseline}). " +
+            "ObjectContainer bridge entries are not being released on GC.")
     }
 }
 

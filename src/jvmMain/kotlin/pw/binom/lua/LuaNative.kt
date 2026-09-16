@@ -108,6 +108,10 @@ internal object LuaNative {
 
     fun callback(id: Int): LuaCallbackBridge? = callbacks[id]
 
+    /** JVM-test hook: number of currently-registered bridge entries. */
+    internal val callbackCount: Int
+        get() = callbacks.size
+
     @JvmStatic
     fun invokeCallback(id: Int, statePtr: Long): Long {
         val cb = callbacks[id] ?: return 0L
