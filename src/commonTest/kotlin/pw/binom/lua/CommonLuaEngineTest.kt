@@ -254,6 +254,22 @@ class CommonLuaEngineTest : AbstractTest() {
     }
 
     @Test
+    fun booleanRoundTripTest() = start {
+        // Regression guard for the posixMain LuaValueWriter boolean inversion:
+        //   `lua_pushboolean(state, if (value.value) 0 else 1)` round-tripped
+        //   Boolean(true) -> Lua true-to-false -> Boolean(false) silently. The
+        //   existing globalTest happened to also check `.value` so the bug
+        //   wasn't caught there.
+        // The fix pushes the integer Lua expects (1 for truthy, 0 for falsy).
+        val e = LuaEngine()
+        for (b in listOf(true, false)) {
+            val result = e.eval("return $b")
+            val got = result[0].checkedBoolean()
+            assertEquals(b, got, "boolean round-trip lost: pushed $b, got $got")
+        }
+    }
+
+    @Test
     fun arrayTest() = start {
         val e = LuaEngine()
         val original = listOf(
@@ -311,8 +327,15 @@ class CommonLuaEngineTest : AbstractTest() {
             val meta = value.metatable
             println("\n\n\n---===GETTING META VALUE===---")
             println("metatade-ptr:$meta")
-            val metaRef = meta.checkedTable().checkedTableRef().toValue()
-            println("ref: $metaRef")
+            // value.metatable is the Kotlin TableValue walked from Lua state
+            // (ref=false in readValueAt — populated during toValue()). It is
+            // a TableValue, not a TableRef: there's no Lua registry slot for
+            // it. The earlier code path took metatable via ref=true and
+            // returned a TableRef; the ref=false fix means we no longer
+            // inflate the registry, but the contract changed here, so just
+            // walk the TableValue directly.
+            val metaAsValue = meta.checkedTable().toValue()
+            println("ref: $metaAsValue")
             listOf(LuaValue.of("Hello from kotlin.  Got "))
         }
 //        e.eval("print('Result: ' .. myfunc(createTable,'my_data_for_function'))")

@@ -17,7 +17,7 @@ internal fun LuaContext.pushValue(value: LuaValue) {
         }
         is LuaValue.Number -> lua_pushnumber(state, value.value)
         is LuaValue.LuaInt -> lua_pushinteger(state, value.value)
-        is LuaValue.Boolean -> lua_pushboolean(state, if (value.value) 0 else 1)
+        is LuaValue.Boolean -> lua_pushboolean(state, if (value.value) 1 else 0)
         is LuaValue.String -> lua_pushstring(state, value.value)
         is LuaValue.Ref -> state.pushRef(value.ref) // lua_rawgeti(this, LUA_REGISTRYINDEX, value.ref.convert())
         is LuaValue.TableValue -> {

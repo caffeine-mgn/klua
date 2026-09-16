@@ -69,11 +69,24 @@ internal class LuaContext {
                         LuaNative.pop(statePtr, 1)
                     }
                     val hasMeta = LuaNative.getMetatable(statePtr, index) != 0
-                    val meta = if (hasMeta) readValueAt(-1, true) else LuaValue.Nil
-                    if (hasMeta) LuaNative.pop(statePtr, 1)
-                    val table = LuaValue.TableValue(map)
-                    table.metatable = meta
-                    table
+                    if (hasMeta) {
+                        // CRITICAL: the metatable is at -1 on the stack right
+                        // now, but the inner recursive readValueAt(_, ref=false)
+                        // uses its `index` parameter as the table index for
+                        // lua_next. If we passed -1, lua_next would try to walk
+                        // whatever happens to be at the stack top AFTER pushNil
+                        // — which is nil, not the metatable — and crash in
+                        // luaH_next+0x8. Compute the absolute index of the
+                        // metatable here, recurse with that, then pop it once.
+                        val metaAbs = LuaNative.getTop(statePtr)
+                        val meta = readValueAt(metaAbs, false)
+                        LuaNative.pop(statePtr, 1)
+                        val table = LuaValue.TableValue(map)
+                        table.metatable = meta
+                        table
+                    } else {
+                        LuaValue.TableValue(map)
+                    }
                 }
             }
             6 -> {

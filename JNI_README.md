@@ -9,8 +9,8 @@
 | Слой | Файл | Назначение |
 |---|---|---|
 | C | `src/jvmMain/c/klua_jni.c` | Библиотека `libklua.so/.dylib/.dll` — JNI-обёртки над Lua C API (lua.h 5.4) |
-| Kotlin | `src/jvmMain/kotlin/pw/binom/lua/LuaNative.kt` | `external` функции-мосты, trampoline-коллбэк обратно в Kotlin |
-| Kotlin | `src/jvmMain/kotlin/pw/binom/lua/NativeLoader.kt` | Извлекает `native/<platform>/libklua.<ext>` из jar в OS tmp и `System.load` |
+| Kotlin | `src/jvmMain/kotlin/pw/binom/lua/LuaNative.kt` | `external` функции-мосты, trampoline-коллбэки обратно в Kotlin, JVM-сайд реестры (`callbacks`, `nextCallbackId`) |
+| Kotlin | `src/jvmMain/kotlin/pw/binom/lua/NativeLoader.kt` | Извлекает `native/<platform>/libklua.<ext>` из jar в `/tmp/jlua/<VERSION>/` и `System.load` |
 | Kotlin | `src/jvmMain/kotlin/pw/binom/lua/StaticRefs.kt` | JVM-сайд идентификация ref-ов (для userdata / closures / light-userdata) |
 | Kotlin | `src/jvmMain/kotlin/pw/binom/lua/LuaContext.kt`, `LuaValue.kt`, `LuaEngine.kt`, `ObjectContainer.kt` | Копия логики posixMain, без `org.luaj.vm2` |
 
@@ -28,18 +28,71 @@ macOS — `linuxX64`, `linuxArm64`, `mingwX64`, `macosX64`/`macosArm64` если
 
 Native-loader сам выбирает нужный файл по `os.name`/`os.arch` при `Class.forName`.
 
-## JVM-коллбэк
+`NativeLoader.VERSION` — строковая константа (`"1.2.0-debug"` на текущий момент).
+При смене версии или при изменении набора JNI-символов `libklua.so` бамп
+инвалидирует кеш `/tmp/jlua/<VERSION>/libklua.so` и заставляет повторно
+распаковать свежий бинарь. Без бампа JVM продолжит грузить протухший
+бинарь из кеша → `UnsatisfiedLinkError` на новых символах.
+
+## JVM-коллбэки и AC-механика
 
 Поскольку у JVM нет стабильных C function pointer-ов, каждая "cfunction" в Lua
-реализована как **одна и та же C-trampoline**, у которой единственный upvalue —
-целочисленный `callback_id`. В Kotlin — глобальный реестр
-`LuaNative.callbacks: Map<Int, LuaCallbackBridge>`. C-trampoline дёргает
-`LuaNative.invokeCallback(int)` — статический метод, чей `jmethodID` кешируется в
-`JNI_OnLoad` один раз при загрузке `.so`.
+реализована как **одна из трёх общих C-trampoline'ов** в `klua_jni.c`:
+
+| Trampoline | Upvalue | Действие |
+|---|---|---|
+| `klua_callback_trampoline` | `callback_id` (int) | диспатчит `__call` через `LuaNative.invokeCallback(id)` |
+| `klua_gc_trampoline` | `callback_id` (int) | диспатчит `__gc` через `LuaNative.disposeCallback(id)` |
+| `klua_userdata_gc_trampoline` | _нет_ | диспатчит `__gc` через payload userdata-адреса → `LuaNative.disposeUserdata(mem)` → `StaticRefs.dispose(mem)` |
+
+В Kotlin:
+
+* `LuaNative.callbacks: ConcurrentHashMap<Int, LuaCallbackBridge>` — реестр мостов для `__call`.
+* `jmethodID` всех `LuaNative` static-методов кешируются один раз в `JNI_OnLoad`.
+
+**AC (auto-clean) design**: пользователь передаёт `engine.createAC(value)` или
+`engine.createACClosure(func)`, и Kotlin-объект становится userdata-ом с
+мета-таблицей, содержащей `__gc`-cfunction. Когда Lua решает что userdata
+больше не нужен, вызывается `__gc`, мост снимает Kotlin-ссылку. Цикл
+"создал — забыл — Lua сама почистила" работает без явного dispose'а.
 
 Возвращаемые значения и возникающие Kotlin-исключения маппятся в
 `lua_push[integer/number/string/boolean/nil/...]` или `luaL_error` соответственно
 по соглашению `(high-bit = err`, остальное = number-of-results).
+
+## Lifecycle и отсутствие утечек
+
+Все Kotlin-обёртки, держащие слот в JVM-глобальной структуре, вешают
+`java.lang.ref.Cleaner`-action на phantom-reachability:
+
+| Wrapper | Cleaner-action | Что снимается |
+|---|---|---|
+| `TableRef` / `FunctionRef` | shared `RefAction` → `LuaNative.unref(state, LUA_REGISTRYINDEX, refId)` | registry-entry |
+| `UserData` | `UserDataAction(state, refId)` → `unref` + `StaticRefs.dispose(mem)` | registry-entry + `StaticRefs`-слот |
+| `LightUserData` | `LightUserDataAction(ptr)` → `StaticRefs.dispose(ptr)` | intern'd `StaticRefs`-слот |
+| `ObjectContainer` (per-bridge) | `BridgeCleaner(id)` → `LuaNative.unregisterCallback(id)` | bridge в `LuaNative.callbacks` |
+
+Закрытые циклы сильных ссылок:
+- `ObjectContainer` ↔ `LuaNative.callbacks`: до рефактора мост захватывал
+  `ObjectContainer.this` через implicit-this в лямбде, мешая phantom-reachability.
+  Решено вынесением `closures`-map в отдельный top-level `ClosureMap`.
+- Cleaner-action не должен захватывать `this` (иначе цикл `register(obj, action)`
+  держит `obj` живым навсегда). Все actions захватывают только `(statePtr,
+  refId)` или `(bridgeId)`.
+
+Закрытые баги (через коммиты этой сессии):
+- AC userdata: `closureGc`/`userdataGc` читали upvalues у пустых cfunction
+  (текло), `createACClosure` создавал userdata без `__gc` мета-таблицы (`595d8b4`).
+- `makeRef`: `ref()` вызывался ДО `toPointer(-1)` и ронял счёт стека
+  при `lua_next` (`e2a43af`).
+- `LuaValueWriter:20`: инвертированный boolean (`lua_pushboolean(0/1)` swap) (`5dbac3c`).
+- `createUserData(LightUserData)`: orphan-entry в `StaticRefs` (`5dbac3c`).
+
+Дед вес снят:
+- `src/commonNativeLikeMain/` и `src/commonNativeLikeTest/` — были зарегистрированы
+  в git, но не в `build.gradle.kts`. Никогда не компилировались. Удалены.
+- `src/jvmTest/AbstractTest.kt` — stale `actual` от старой `expect/actual` архитектуры,
+  в комментариях. Удалён.
 
 ## Совместимость
 
@@ -54,16 +107,27 @@ Native-loader сам выбирает нужный файл по `os.name`/`os.a
 ## Тесты
 
 ```
-> ./gradlew jvmTest --offline
-21/21 passed (17 CommonLuaEngineTest + 1 CommonLuaValueTest + 3 TestClosureDebug)
+> JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew jvmTest --offline
+25/25 passed (17 CommonLuaEngineTest + 1 CommonLuaValueTest + 7 JvmAcDisposeTest)
 
 > ./gradlew linuxX64Test --offline
-21/21 passed
+18/18 passed
 ```
 
 Оба таргета дают идентичные результаты — общая кодовая база в `commonTest/`
-гарантирует семантический паритет JVM и native. JVM раннер может
-использовать любой OpenJDK 21.x.
+гарантирует семантический паритет JVM и native. JVM раннер должен
+использовать OpenJDK 21.x (Liberica 21.0.6 крашит на текущем JNI-коде).
+
+`JvmAcDisposeTest` (JVM-специфичный) держит регрессионные guard'ы:
+* `autoCleanUserdataGetsDisposedByLuaGc` — Lua-юзердата реально снимается
+  `__gc`, не только Kotlin-wrapper.
+* `tableAndFunctionRefsDoNotLeakIntoRegistry` — 1000×read+drop, `LUA_REGISTRYINDEX`
+  возвращается к baseline.
+* `objectContainerBridgesDoNotLeakIntoCallbacksMap` — 1000×`makeClosure`,
+  `LuaNative.callbacks` возвращается к baseline.
+* `lightUserDataDoesNotLeakIntoStaticRefs` — `ObjectContainer.add` не текёт.
+* `createUserDataFromLightUserDataDoesNotOrphanEntries` — orphan-entry fix.
+* `manualDisposeWorks` / `cleanerSmokeTest` — JVM-Cleaner держится честно.
 
 ## Кросс-таргеты
 
@@ -74,8 +138,3 @@ Native-loader сам выбирает нужный файл по `os.name`/`os.a
 
 macOS-таргеты добавляются только когда хост — mac (`KonanTarget.host == MACOS_*`):
 кросс-компиляция с Linux/Windows на Apple-таргеты через kn-clang недоступна.
-
-## TODO
-
-1. **`metatableTest`**: содержит `LuaValue.setmetatable` функционал, который
-   не реализован (в posixNative он тоже не используется — только в тесте).
