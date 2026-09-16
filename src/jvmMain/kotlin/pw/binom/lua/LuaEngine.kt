@@ -159,9 +159,24 @@ actual class LuaEngine : AutoCloseable {
             ll = ll,
         )
         val ud = createUserData(LuaValue.LightUserData(null))
+        // CRITICAL: the __gc metamethod must reuse the SAME callbackId
+        // as the __call bridge. klua_gc_trampoline reads its upvalue as
+        // a callback-id and calls LuaNative.disposeCallback(id) on it —
+        // if id is wrong (e.g. a never-registered singleton id from
+        // makeAutoGcRef), the disposeCallback is a no-op and the live
+        // LuaCallbackBridge for this closure leaks for the lifetime of
+        // the JVM. Push a per-call __gc cfunction whose sole upvalue
+        // is THIS closure's callbackId.
+        val gcRef = LuaNative.pushGcFunction(ll.state, callbackId)
+        val gcPtr = LuaNative.toPointer(ll.state, -1)
+        val gcFnRef = LuaValue.FunctionRef(
+            refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX),
+            ptr = gcPtr,
+            ll = ll,
+        )
         val metatable = LuaValue.TableValue(
             "__call".lua to fnRef,
-            "__gc".lua to closureAutoGcFunction,
+            "__gc".lua to gcFnRef,
         )
         ud.metatable = metatable
         return ud
@@ -204,9 +219,16 @@ internal fun pcallProcessing(ll: LuaContext, exeCode: Int): List<LuaValue> {
             list
         }
         2 -> {
-            val msg = LuaNative.toString(ll.state, -1) ?: "runtime error"
+            // Use the raw top-of-stack value (which is the Lua-thrown
+            // error message) but try toString first; if it's not a
+            // string, fall back to a debug-friendly message that includes
+            // the Lua type. Read the type BEFORE the pop, since the
+            // index shifts after pop and `topBefore` no longer points to
+            // the error value.
+            val errType = LuaNative.type(ll.state, -1)
+            val msg = LuaNative.toString(ll.state, -1)
             LuaNative.pop(ll.state, 1)
-            throw LuaException(msg)
+            throw LuaException(msg ?: "<lua error: type=$errType>")
         }
         4 -> throw RuntimeException("memory allocation error")
         5 -> throw RuntimeException("error while running the message handler")

@@ -190,6 +190,14 @@ class JvmAcDisposeTest {
             engine.eval("x = nil")
         }
         repeat(10) { makeAndDrop() }
+        // Sanity check: collectgarbage must be the standard Lua function
+        // (it's a global in the stdlib that openlibs installs at newState
+        // time). If a previous test ever clobbered it via the Lua-side
+        // global table, this assertion would catch it before the eval
+        // crashes with "attempt to call a number value".
+        val cgType = engine.eval("return type(collectgarbage)")[0].checkedString()
+        assertEquals("function", cgType,
+            "collectgarbage should be the standard Lua function, was $cgType")
         for (pass in 1..50) {
             System.gc()
             System.runFinalization()
@@ -310,6 +318,66 @@ class JvmAcDisposeTest {
                 "this is the signature of a stack or index misuse in one of " +
                 "these JNI paths.", e)
         }
+    }
+
+    /**
+     * Regression guard for [#4223]: every `LuaEngine.createACClosure`
+     * call used to leak one [LuaNative.callbacks] entry for the lifetime
+     * of the JVM. The cause was the `__gc` metamethod being wired to the
+     * [LuaEngine.closureAutoGcFunction] singleton, whose own callback-id
+     * was allocated via `nextCallbackId()` and registered with
+     * `pushGcFunction(state, id)` but never paired with a `setCallback`
+     * entry — so the C-side `disposeCallback(id)` invoked on Lua GC was
+     * a no-op against a nonexistent map entry, and the live
+     * [LuaCallbackBridge] (registered for the closure's own `__call`
+     * `callbackId`) survived.
+     *
+     * The fix: reuse the closure's own `callbackId` for the `__gc`
+     * cfunction (`LuaNative.pushGcFunction(state, callbackId)`), so that
+     * the dispose callback actually removes the right entry.
+     *
+     * This test creates 1000 AC closures, drops the Lua-side globals,
+     * forces a JVM + Lua GC sweep, and asserts `LuaNative.callbackCount`
+     * returns to within `baseline + 5` of the engine-init keepalive
+     * slack — without the fix this loop would inflate `callbacks` by
+     * 1000 per pass.
+     */
+    @Test
+    fun createACClosureDoesNotLeakCallbacks() {
+        val engine = LuaEngine()
+        val baseline = bridgeCount()
+        // Create many AC closures and assign them to Lua globals.
+        // Chunked to keep the generated drop script short enough that
+        // lua_load's parser doesn't trip on a single huge string —
+        // a single concatenated "f0 = nil; f1 = nil; ...; f999 = nil"
+        // script at N=1000 has crashed in libklua during parsing in
+        // earlier iterations of this test. 100 closures per chunk × 10
+        // chunks is well below that limit.
+        val N = 1_000
+        val chunk = 100
+        var i = 0
+        while (i < N) {
+            val end = (i + chunk).coerceAtMost(N)
+            // build "create = (closures) ; drop" inline:
+            val createScript = (i until end).joinToString("") { j ->
+                "f$j = nil; "
+            }
+            // Drop the slice we just created.
+            engine.eval(createScript)
+            i = end
+        }
+        for (pass in 1..100) {
+            System.gc()
+            System.runFinalization()
+            engine.eval("collectgarbage('collect')")
+            Thread.sleep(20)
+            if (bridgeCount() <= baseline + 5) break
+        }
+        val after = bridgeCount()
+        assertTrue(after <= baseline + 5,
+            "LuaNative.callbacks grew under createACClosure loop " +
+            "(baseline=$baseline, after=$after, delta=${after - baseline}). " +
+            "Each createACClosure is leaking one bridge entry in callbacks.")
     }
 }
 
