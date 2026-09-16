@@ -1,0 +1,32 @@
+---===CALL===---
+Called success
+
+__tostring called
+
+__tostring called
+
+__tostring called
+
+__tostring called
+data=lightuserdata(0x3dbcfef0)
+/for pass called. try call function(0x3dbd6450)
+-->{foo=bar}
+-->{key=value}
+to-string-called
+	Вася
+Пупкин
+	Вася
+metatable:	table: 0x3dbfe700
+args: [table(0x3dbff400)]
+Getting table value...
+
+
+
+---===GETTING VALUE===---
+{done! table_value({firstName=Вася, lastName=Пупкин, getName=function(0x3dbfe650)}, metatable: table(0x3dbfe700))
+
+
+
+---===GETTING META VALUE===---
+metatade-ptr:table(0x3dbfe700)
+Href: table_value({__index=table(0x3dbfe700), new=function(0x3dbfe600)})

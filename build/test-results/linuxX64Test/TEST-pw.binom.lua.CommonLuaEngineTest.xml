@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="pw.binom.lua.CommonLuaEngineTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-09-16T00:37:00" hostname="subochev-work" time="0.002">
+  <properties/>
+  <testcase name="callTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="globalTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="evalTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="getFromTableRef[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="lightUserDataTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="testAutoCleanUserData[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="autoCleanClosureTest1[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="autoCleanClosureTest2[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="toStringTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="userDataTest2[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="callPassedFunctionTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="refFuncCall[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="throwException[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="errorCatching[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="metatableTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="arrayTest[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="test[linuxX64]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <system-out><![CDATA[---===CALL===---
+Called success
+__tostring called
+__tostring called
+__tostring called
+__tostring called
+data=lightuserdata(0x3dbcfef0)
+for pass called. try call function(0x3dbd6450)
+-->{foo=bar}
+-->{key=value}
+to-string-called
+Вася
+Пупкин
+Вася
+metatable:	table: 0x3dbfe700
+args: [table(0x3dbff400)]
+Getting table value...
+
+
+
+---===GETTING VALUE===---
+done! table_value({firstName=Вася, lastName=Пупкин, getName=function(0x3dbfe650)}, metatable: table(0x3dbfe700))
+
+
+
+---===GETTING META VALUE===---
+metatade-ptr:table(0x3dbfe700)
+ref: table_value({__index=table(0x3dbfe700), new=function(0x3dbfe600)})
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -29,7 +29,6 @@ allprojects {
 
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
 val JNI_SOURCES_DIR = file("${buildFile.parentFile}/src/jvmMain/c")
-val jsRun = System.getProperty("jsrun") != null
 
 tasks.withType<Test>().configureEach {
     testLogging {
@@ -61,45 +60,6 @@ kotlin {
     targets {
         compilerOptions {
             freeCompilerArgs.add("-Xexpect-actual-classes")
-        }
-    }
-//    allTargets {
-//        compilerOptions {
-//            freeCompilerArgs.add("-Xexpect-actual-classes")
-//        }
-//    }
-    if (pw.binom.Config.JS_TARGET_SUPPORT) {
-        if (jsRun) {
-            js("js") {
-                browser {
-                    testTask {
-                        useKarma {
-                            useFirefox()
-//                        useFirefoxHeadless()
-//                        useChromium()
-                        }
-                    }
-                }
-                binaries.executable()
-            }
-        } else {
-            var applled = false
-            js(IR) {
-                browser {
-                    browser {
-                        testTask {
-                            if (!applled) {
-                                applled = true
-                                useKarma {
-                                    useChromiumHeadless()
-//                                useFirefoxHeadless()
-                                }
-                            }
-                        }
-                    }
-                }
-                nodejs()
-            }
         }
     }
 
@@ -246,21 +206,6 @@ kotlin {
         dependsOn("mingw*Test", posixTest)
         dependsOn("macos*Test", posixTest)
 
-        if (pw.binom.Config.JS_TARGET_SUPPORT) {
-            val jsMain by getting {
-                dependencies {
-                    api(kotlin("stdlib-js"))
-                    dependsOn(commonMain)
-                }
-            }
-
-            val jsTest by getting {
-                dependencies {
-                    api(kotlin("test-js"))
-                    dependsOn(commonTest)
-                }
-            }
-        }
         val jvmMain by getting {
             dependencies {
                 api("org.jetbrains.kotlin:kotlin-stdlib:${pw.binom.Versions.KOTLIN_VERSION}")

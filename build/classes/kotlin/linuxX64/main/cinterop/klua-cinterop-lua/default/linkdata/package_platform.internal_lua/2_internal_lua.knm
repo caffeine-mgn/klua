@@ -1,0 +1,1115 @@
+
+ôD
+kotlinx
+cinterop
+
+CValuesRef
+platform
+internal_lua
+	lua_State
+L
+kotlin
+Int
+arg
+	ByteVarOf
+Byte
+ByteVar
+tname
+internal
+CCall
+Direct
+name
+luaL_typeerror
+id
+0knifunptr_platform_internal_lua_luaL_typeerror_1
+LowPriorityInOverloadResolution
+ExperimentalForeignApi
+
+ULongVarOf
+ULong
+posix
+	size_tVar
+l
+CPointer
+luaL_checklstring
+3knifunptr_platform_internal_lua_luaL_checklstring_0
+String
+CString
+def
+luaL_optlstring
+1knifunptr_platform_internal_lua_luaL_optlstring_0
+1knifunptr_platform_internal_lua_luaL_optlstring_1
+Double
+
+lua_Number
+luaL_checknumber
+2knifunptr_platform_internal_lua_luaL_checknumber_0
+luaL_optnumber
+0knifunptr_platform_internal_lua_luaL_optnumber_0
+Long
+lua_Integer
+luaL_checkinteger
+3knifunptr_platform_internal_lua_luaL_checkinteger_0
+luaL_optinteger
+1knifunptr_platform_internal_lua_luaL_optinteger_0
+sz
+msg
+Unit
+luaL_checkstack
+1knifunptr_platform_internal_lua_luaL_checkstack_0
+1knifunptr_platform_internal_lua_luaL_checkstack_1
+t
+luaL_checktype
+0knifunptr_platform_internal_lua_luaL_checktype_0
+luaL_checkany
+/knifunptr_platform_internal_lua_luaL_checkany_0
+luaL_newmetatable
+3knifunptr_platform_internal_lua_luaL_newmetatable_0
+3knifunptr_platform_internal_lua_luaL_newmetatable_1
+luaL_setmetatable
+3knifunptr_platform_internal_lua_luaL_setmetatable_0
+3knifunptr_platform_internal_lua_luaL_setmetatable_1
+ud
+CPointed
+COpaquePointer
+luaL_testudata
+0knifunptr_platform_internal_lua_luaL_testudata_0
+0knifunptr_platform_internal_lua_luaL_testudata_1
+luaL_checkudata
+1knifunptr_platform_internal_lua_luaL_checkudata_0
+1knifunptr_platform_internal_lua_luaL_checkudata_1
+lvl
+
+luaL_where
+,knifunptr_platform_internal_lua_luaL_where_0
+fmt
+Array
+Any
+variadicArguments
+
+luaL_error
+,knifunptr_platform_internal_lua_luaL_error_0
+,knifunptr_platform_internal_lua_luaL_error_1
+CPointerVarOf
+CPointerVar
+lst
+luaL_checkoption
+2knifunptr_platform_internal_lua_luaL_checkoption_0
+2knifunptr_platform_internal_lua_luaL_checkoption_1
+stat
+fname
+luaL_fileresult
+1knifunptr_platform_internal_lua_luaL_fileresult_0
+1knifunptr_platform_internal_lua_luaL_fileresult_1
+luaL_execresult
+1knifunptr_platform_internal_lua_luaL_execresult_0
+luaL_ref
+*knifunptr_platform_internal_lua_luaL_ref_0
+ref
+
+luaL_unref
+,knifunptr_platform_internal_lua_luaL_unref_0
+filename
+mode
+luaL_loadfilex
+0knifunptr_platform_internal_lua_luaL_loadfilex_0
+0knifunptr_platform_internal_lua_luaL_loadfilex_1
+buff
+size_t
+luaL_loadbufferx
+2knifunptr_platform_internal_lua_luaL_loadbufferx_0
+2knifunptr_platform_internal_lua_luaL_loadbufferx_1
+s
+luaL_loadstring
+1knifunptr_platform_internal_lua_luaL_loadstring_0
+1knifunptr_platform_internal_lua_luaL_loadstring_1
+luaL_newstate
+/knifunptr_platform_internal_lua_luaL_newstate_0
+idx
+luaL_len
+*knifunptr_platform_internal_lua_luaL_len_0
+luaL_Buffer
+b
+p
+r
+luaL_addgsub
+.knifunptr_platform_internal_lua_luaL_addgsub_0
+.knifunptr_platform_internal_lua_luaL_addgsub_1
+	luaL_gsub
++knifunptr_platform_internal_lua_luaL_gsub_0
++knifunptr_platform_internal_lua_luaL_gsub_1
+luaL_Reg
+nup
+luaL_setfuncs
+/knifunptr_platform_internal_lua_luaL_setfuncs_0
+luaL_getsubtable
+2knifunptr_platform_internal_lua_luaL_getsubtable_0
+2knifunptr_platform_internal_lua_luaL_getsubtable_1
+L1
+level
+luaL_traceback
+0knifunptr_platform_internal_lua_luaL_traceback_0
+0knifunptr_platform_internal_lua_luaL_traceback_1
+modname
+	CFunction
+	Function1
+lua_CFunction
+openf
+glb
+luaL_requiref
+/knifunptr_platform_internal_lua_luaL_requiref_0
+/knifunptr_platform_internal_lua_luaL_requiref_1
+B
+luaL_buffinit
+/knifunptr_platform_internal_lua_luaL_buffinit_0
+luaL_prepbuffsize
+3knifunptr_platform_internal_lua_luaL_prepbuffsize_0
+luaL_addlstring
+1knifunptr_platform_internal_lua_luaL_addlstring_0
+1knifunptr_platform_internal_lua_luaL_addlstring_1
+luaL_addstring
+0knifunptr_platform_internal_lua_luaL_addstring_0
+0knifunptr_platform_internal_lua_luaL_addstring_1
+luaL_addvalue
+/knifunptr_platform_internal_lua_luaL_addvalue_0
+luaL_pushresult
+1knifunptr_platform_internal_lua_luaL_pushresult_0
+luaL_pushresultsize
+5knifunptr_platform_internal_lua_luaL_pushresultsize_0
+luaL_buffinitsize
+3knifunptr_platform_internal_lua_luaL_buffinitsize_0
+x
+luaO_utf8esc
+.knifunptr_platform_internal_lua_luaO_utf8esc_0
+UInt
+luaO_ceillog2
+/knifunptr_platform_internal_lua_luaO_ceillog2_0
+op
+TValue
+p1
+p2
+res
+luaO_rawarith
+/knifunptr_platform_internal_lua_luaO_rawarith_0
+
+StackValue
+StkId
+
+luaO_arith
+,knifunptr_platform_internal_lua_luaO_arith_0
+o
+luaO_str2num
+.knifunptr_platform_internal_lua_luaO_str2num_0
+.knifunptr_platform_internal_lua_luaO_str2num_1
+c
+luaO_hexavalue
+0knifunptr_platform_internal_lua_luaO_hexavalue_0
+obj
+luaO_tostring
+/knifunptr_platform_internal_lua_luaO_tostring_0
+__va_list_tag
+linux
+va_list
+argp
+luaO_pushvfstring
+3knifunptr_platform_internal_lua_luaO_pushvfstring_0
+3knifunptr_platform_internal_lua_luaO_pushvfstring_1
+luaO_pushfstring
+2knifunptr_platform_internal_lua_luaO_pushfstring_0
+2knifunptr_platform_internal_lua_luaO_pushfstring_1
+out
+source
+srclen
+luaO_chunkid
+.knifunptr_platform_internal_lua_luaO_chunkid_0
+.knifunptr_platform_internal_lua_luaO_chunkid_1
+luaT_objtypename
+2knifunptr_platform_internal_lua_luaT_objtypename_0
+Table
+events
+TMS
+event
+TString
+ename
+
+luaT_gettm
+,knifunptr_platform_internal_lua_luaT_gettm_0
+luaT_gettmbyobj
+1knifunptr_platform_internal_lua_luaT_gettmbyobj_0
+	luaT_init
++knifunptr_platform_internal_lua_luaT_init_0
+f
+p3
+luaT_callTM
+-knifunptr_platform_internal_lua_luaT_callTM_0
+luaT_callTMres
+0knifunptr_platform_internal_lua_luaT_callTMres_0
+luaT_trybinTM
+/knifunptr_platform_internal_lua_luaT_trybinTM_0
+luaT_tryconcatTM
+2knifunptr_platform_internal_lua_luaT_tryconcatTM_0
+inv
+luaT_trybinassocTM
+4knifunptr_platform_internal_lua_luaT_trybinassocTM_0
+i2
+luaT_trybiniTM
+0knifunptr_platform_internal_lua_luaT_trybiniTM_0
+luaT_callorderTM
+2knifunptr_platform_internal_lua_luaT_callorderTM_0
+v2
+isfloat
+luaT_callorderiTM
+3knifunptr_platform_internal_lua_luaT_callorderiTM_0
+
+nfixparams
+CallInfo
+ci
+Proto
+luaT_adjustvarargs
+4knifunptr_platform_internal_lua_luaT_adjustvarargs_0
+where
+wanted
+luaT_getvarargs
+1knifunptr_platform_internal_lua_luaT_getvarargs_0
+luaM_toobig
+-knifunptr_platform_internal_lua_luaM_toobig_0
+block
+oldsize
+size
+luaM_realloc_
+/knifunptr_platform_internal_lua_luaM_realloc__0
+luaM_saferealloc_
+3knifunptr_platform_internal_lua_luaM_saferealloc__0
+osize
+
+luaM_free_
+,knifunptr_platform_internal_lua_luaM_free__0
+nelems
+IntVarOf
+IntVar
+	size_elem
+limit
+what
+luaM_growaux_
+/knifunptr_platform_internal_lua_luaM_growaux__0
+/knifunptr_platform_internal_lua_luaM_growaux__1
+nelem
+final_n
+luaM_shrinkvector_
+4knifunptr_platform_internal_lua_luaM_shrinkvector__0
+tag
+luaM_malloc_
+.knifunptr_platform_internal_lua_luaM_malloc__0
+Zio
+ZIO
+z
+	Function3
+
+lua_Reader
+reader
+data
+	luaZ_init
++knifunptr_platform_internal_lua_luaZ_init_0
+n
+	luaZ_read
++knifunptr_platform_internal_lua_luaZ_read_0
+	luaZ_fill
++knifunptr_platform_internal_lua_luaZ_fill_0
+global_State
+g
+l_mem
+debt
+luaE_setdebt
+.knifunptr_platform_internal_lua_luaE_setdebt_0
+luaE_freethread
+1knifunptr_platform_internal_lua_luaE_freethread_0
+luaE_extendCI
+/knifunptr_platform_internal_lua_luaE_extendCI_0
+luaE_freeCI
+-knifunptr_platform_internal_lua_luaE_freeCI_0
+luaE_shrinkCI
+/knifunptr_platform_internal_lua_luaE_shrinkCI_0
+luaE_enterCcall
+1knifunptr_platform_internal_lua_luaE_enterCcall_0
+tocont
+luaE_warning
+.knifunptr_platform_internal_lua_luaE_warning_0
+.knifunptr_platform_internal_lua_luaE_warning_1
+luaE_warnerror
+0knifunptr_platform_internal_lua_luaE_warnerror_0
+0knifunptr_platform_internal_lua_luaE_warnerror_1
+GCObject
+luaC_fix
+*knifunptr_platform_internal_lua_luaC_fix_0
+luaC_freeallobjects
+5knifunptr_platform_internal_lua_luaC_freeallobjects_0
+	luaC_step
++knifunptr_platform_internal_lua_luaC_step_0
+
+statesmask
+luaC_runtilstate
+2knifunptr_platform_internal_lua_luaC_runtilstate_0
+isemergency
+luaC_fullgc
+-knifunptr_platform_internal_lua_luaC_fullgc_0
+tt
+luaC_newobj
+-knifunptr_platform_internal_lua_luaC_newobj_0
+v
+luaC_barrier_
+/knifunptr_platform_internal_lua_luaC_barrier__0
+luaC_barrierback_
+3knifunptr_platform_internal_lua_luaC_barrierback__0
+mt
+luaC_checkfinalizer
+5knifunptr_platform_internal_lua_luaC_checkfinalizer_0
+newmode
+luaC_changemode
+1knifunptr_platform_internal_lua_luaC_changemode_0
+CArrayPointer
+CGlobalAccess
+luaT_typenames_
+Pointer
+8knifunptr_platform_internal_lua_luaT_typenames__getter_0
+	lua_ident
+2knifunptr_platform_internal_lua_lua_ident_getter_0
+LUAI_MAXCSTACK
+LUAI_IS32INT
+LUA_INT_INT
+LUA_INT_LONG
+LUA_INT_LONGLONG
+LUA_FLOAT_FLOAT
+LUA_FLOAT_DOUBLE
+LUA_FLOAT_LONGDOUBLEå
+ 
+ 
+ 
+
+
+ 
+
+ 
+
+ 
+ 
+ 
+
+ 
+ 
+
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+  
+% 
+& 
++ 
+, 
+3 
+C 
+D 
+O 
+P 
+U 
+V 
+m 
+z 
+Ñ 
+ë 
+í 
+ì 
+Ø 
+≥ 
+π 
+∫ 
+« 
+»
+.… 
+Ÿ 
+€ 
+› 
+¸ 
+˛ 
+í 
+ì 
+° 
+¢ 
+§ 
+• 
+Ø 
+± 
+∆ 
+· 
+‚ 
+?‰ √ac02
+002	020	0j`
+0Há “
+(“
+(“
+“
+p0	0j`
+02
+002	0200j`0Há “
+(“
+(“
+Å"0	0j`
+02
+002	02!0“
+200j`0Há “
+("“
+(#“
+è"0	0j`
+02
+002	02!0	0j`
+0200j`0Há “
+("“
+($“
+“
+H'0j`2
+002	0Há “
+('“
+((“
+T)0j`2
+002	02
+!0j`Há “
+()“
+(*“
+H-0j`2
+002	0Há “
+(-“
+(.“
+T/0j`2
+002	02
+!0j`Há “
+(/“
+(0“
+U402
+00210220“
+Há “
+(4“
+(5“
+c402
+00210220	0j`
+0Há “
+(4“
+(6“
+“
+L802
+002	0270Há “
+(8“
+(9“
+D:02
+002	0Há “
+(:“
+(;“
+M<02
+0020“
+Há “
+(<“
+(=“
+[<02
+0020	0j`
+0Há “
+(<“
+(>“
+“
+M?02
+0020“
+Há “
+(?“
+(@“
+[?02
+0020	0j`
+0Há “
+(?“
+(A“
+“
+eE00j`2
+002B020“
+Há “
+(E“
+(F“
+sE00j`2
+002B020	0j`
+0Há “
+(E“
+(G“
+“
+eH00j`2
+002B020“
+Há “
+(H“
+(I“
+sH00j`2
+002B020	0j`
+0Há “
+(H“
+(J“
+“
+DL02
+002K0Há “
+(L“
+(M“
+cR02
+002N0“
+2Q
+0 0"0 Há “
+(R“
+(S“
+qR02
+002N0	0j`
+02Q
+0 0"0 Há “
+(R“
+(T“
+“
+èX02
+002	02!0“
+28W4.,0	0j`
+00!j0	0j`
+`"0Há “
+(X“
+(Y“
+ùX02
+002	02!0	0j`
+028W4.,0	0j`
+00!j0	0j`
+`"0Há “
+(X“
+(Z“
+“
+U]02
+002[02\0“
+Há “
+(]“
+(^“
+c]02
+002[02\0	0j`
+0Há “
+(]“
+(_“
+“
+D`02
+002[0Há “
+(`“
+(a“
+Db02
+00270Há “
+(b“
+(c“
+Le02
+002702d0Há “
+(e“
+(f“
+^i02
+002g0“
+2h0“
+Há “
+(i“
+(j“
+ui02
+002g0	0j`
+02h0	0j`
+0Há “
+(i“
+(k“
+“
+{n02
+002l0“
+2
+10j`#20“
+2h0“
+Há “
+(n“
+(o“
+õn02
+002l0	0j`
+02
+10j`#20	0j`
+02h0	0j`
+0Há “
+(n“
+(p“
+“
+Mr02
+002q0“
+Há “
+(r“
+(s“
+[r02
+002q0	0j`
+0Há “
+(r“
+(t“
+“
+4u
+00Há “
+(u“
+(v“
+Hx0j`2
+002w0Há “
+(x“
+(y“
+o~02{
+0$02q0“
+2|0“
+2}0“
+Há “
+(~“
+(“
+ê~02{
+0$02q0	0j`
+02|0	0j`
+02}0	0j`
+0Há “
+(~“
+	(Ä“
+“
+ÑÅ0	0j`
+02
+002q0“
+2|0“
+2}0“
+Há “
+	(Å“
+	(Ç“
+§Å0	0j`
+02
+002q0	0j`
+02|0	0j`
+02}0	0j`
+0Há “
+	(Å“
+	(É“
+“
+XÜ02
+002
+0%02Ö0Há “
+	(Ü“
+	(á“
+Xà02
+002w02\0“
+Há “
+	(à“
+	(â“
+fà02
+002w02\0	0j`
+0Há “
+	(à“
+	(ä“
+“
+jç02
+002ã
+00220“
+2å0Há “
+	(ç“
+	(é“
+xç02
+002ã
+00220	0j`
+02å0Há “
+	(ç“
+	(è“
+“
+ãñ02
+002ê0“
+2/î*
+0000'0&0j`(2ï0Há “
+	(ñ“
+	(ó“
+ôñ02
+002ê0	0j`
+02/î*
+0000'0&0j`(2ï0Há “
+	(ñ“
+	(ò“
+“
+Pö02
+002ô
+0$0Há “
+	(ö“
+	(õ“
+^ú0	0j`
+02ô
+0$02
+10j`#Há “
+	(ú“
+	(ù“
+]û02ô
+0$02q0“
+2
+0j`#Há “
+	(û“
+	(ü“
+kû02ô
+0$02q0	0j`
+02
+0j`#Há “
+	(û“
+	(†“
+“
+Q°02ô
+0$02q0“
+Há “
+	(°“
+	(¢“
+_°02ô
+0$02q0	0j`
+0Há “
+	(°“
+	(£“
+“
+@§02ô
+0$0Há “
+	(§“
+	(•“
+@¶02ô
+0$0Há “
+	(¶“
+	(ß“
+L®02ô
+0$02
+10j`#Há “
+	(®“
+	(©“
+n™0	0j`
+02
+002ô
+0$02
+10j`#Há “
+	(™“
+	(´“
+R≠02l0	0j`
+02¨0Há “
+	(≠“
+	(Æ“
+8∞02¨0)Há “
+	(∞“
+	(±“
+{∑02
+002≤02¥
+0*02µ
+0*02∂
+0*0Há “
+	(∑“
+	(∏“
+Åª02
+002≤02¥
+0*02µ
+0*02∂0+0j`,Há “
+	(ª“
+	(º“
+Uæ0j`#2q0“
+2Ω
+0*0Há “
+	(æ“
+	(ø“
+cæ0j`#2q0	0j`
+02Ω
+0*0Há “
+	(æ“
+	(¿“
+“
+8¬02¡0Há “
+	(¬“
+	(√“
+P≈02
+002ƒ
+0*0Há “
+	(≈“
+	(∆“
+yÀ0	0j`
+02
+002N0“
+2 0-0j`/Há “
+	(À“
+	(Ã“
+áÀ0	0j`
+02
+002N0	0j`
+02 0-0j`/Há “
+	(À“
+	(Õ“
+“
+xŒ0	0j`
+02
+002N0“
+2Q
+0 0"0 Há “
+	(Œ“
+	(œ“
+ÜŒ0	0j`
+02
+002N0	0j`
+02Q
+0 0"0 Há “
+	(Œ“
+	(–“
+“
+i‘02—0	0j`
+02“0“
+2”0j`#Há “
+	(‘“
+	(’“
+w‘02—0	0j`
+02“0	0j`
+02”0j`#Há “
+	(‘“
+	(÷“
+“
+b◊0	0j`
+02
+002Ω
+0*0Há “
+	(◊“
+	(ÿ“
+bﬂ
+0*02⁄
+0002‹012ﬁ
+020Há “
+	(ﬂ“
+	(‡“
+a·
+0*02
+002Ω
+0*02‹01Há “
+	(·“
+	(‚“
+?„02
+00Há “
+	(„“
+	(‰“
+ÉÁ02
+002Â
+0*02¥
+0*02µ
+0*02Ê
+0*0Há “
+	(Á“
+	(Ë“
+âÈ02
+002Â
+0*02¥
+0*02µ
+0*02Ê0+0j`,Há “
+	(È“
+	(Í“
+ÅÎ02
+002¥
+0*02µ
+0*02∂0+0j`,2‹01Há “
+	(Î“
+	(Ï“
+?Ì02
+00Há “
+	(Ì“
+	(Ó“
+ä02
+002¥
+0*02µ
+0*02Ô02∂0+0j`,2‹01Há “
+	(“
+	(Ò“
+ÜÛ02
+002¥
+0*02Ú0j`2Ô02∂0+0j`,2‹01Há “
+	(Û“
+	(Ù“
+jı02
+002¥
+0*02µ
+0*02‹01Há “
+	(ı“
+	(ˆ“
+t˘02
+002¥
+0*02˜02Ô02¯02‹01Há “
+	(˘“
+	(˙“
+iˇ02
+002˚02˝
+0302|
+040Há “
+	(ˇ“
+	(Ä“
+pÉ02
+002˝
+0302Å0+0j`,2Ç0Há “
+	(É“
+	(Ñ“
+?Ö02
+00Há “
+	(Ö“
+	(Ü“
+xä00j`2
+002á02à0j`#2â0j`#Há “
+	(ä“
+	(ã“
+xå00j`2
+002á02à0j`#2â0j`#Há “
+	(å“
+	(ç“
+[è02
+002á02é0j`#Há “
+	(è“
+	(ê“
+¶ó00j`2
+002á02ë02â005j`602î02ï02ñ0“
+Há “
+	(ó“
+	(ò“
+¥ó00j`2
+002á02ë02â005j`602î02ï02ñ0	0j`
+0Há “
+	(ó“
+	(ô“
+“
+ãú00j`2
+002á02ö005j`602õ02î0Há “
+	(ú“
+	(ù“
+eü00j`2
+002â0j`#2û0Há “
+	(ü“
+	(†“
+‘®02
+002£07j`802o¶j^\XV
+0000j`00j`00	0j`
+0090&0j`:2ß0Há “
+	(®“
+	(©“
+c´0j`#2£07j`802{02™0j`#Há “
+	(´“
+	(¨“
+D≠02£07j`80Há “
+	(≠“
+	(Æ“
+M≥02∞
+0;02≤0j`<Há “
+	(≥“
+	(¥“
+Pµ02
+002ã
+00Há “
+	(µ“
+	(∂“
+G∑
+0302
+00Há “
+	(∑“
+	(∏“
+?π02
+00Há “
+	(π“
+	(∫“
+?ª02
+00Há “
+	(ª“
+	(º“
+?Ω02
+00Há “
+	(Ω“
+	(æ“
+Y¿02
+00220“
+2ø0Há “
+	(¿“
+	(¡“
+g¿02
+00220	0j`
+02ø0Há “
+	(¿“
+	(¬“
+“
+Q√02
+002Å0“
+Há “
+	(√“
+	(ƒ“
+_√02
+002Å0	0j`
+0Há “
+	(√“
+	(≈“
+“
+P«02
+002Ω
+0=0Há “
+	(«“
+	(»“
+?…02
+00Há “
+	(…“
+	( “
+?À02
+00Há “
+	(À“
+	(Ã“
+HŒ02
+002Õ0Há “
+	(Œ“
+	(œ“
+H—02
+002–0Há “
+	(—“
+	(““
+\‘
+0=02
+002”02
+10j`#Há “
+	(‘“
+	(’“
+a◊02
+002Ω
+0=02÷
+0=0Há “
+	(◊“
+	(ÿ“
+PŸ02
+002Ω
+0=0Há “
+	(Ÿ“
+	(⁄“
+a‹02
+002Ω
+0=02€
+000Há “
+	(‹“
+	(›“
+Hﬂ02
+002ﬁ0Há “
+	(ﬂ“
+	(‡“
+"õ„f.,0	0j`
+00!j0	0j`
+`"0j2.,0	0j`
+00!j0	0j`
+`"`>8«Xá“
+ä?	(„ä@ä	(Â"[Ê&0	0j`
+0j0	0j`
+`>8«Xá“
+ä?	(Êä@ä	(Á"Ë08XáT“
+Í
+†"È08XáT“
+Í
+"Í08XáT“
+Í
+"Î08XáT“
+Í
+"Ï08XáT“
+Í
+"Ì08XáT“
+Í
+"Ó08XáT“
+Í
+"Ô08XáT“
+Í
+ÿ
+‡
+ Í
+platform.internal_lua

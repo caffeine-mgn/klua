@@ -1,0 +1,24 @@
+Called success
+
+---===CALL===---
+args: [table(7f61288628e0)]
+Getting table value...
+
+
+
+---===GETTING VALUE===---
+done! table_value({lastName=Пупкин, firstName=Вася, getName=function(7f61288609c0)}, metatable: table(7f6128860a90))
+
+
+
+---===GETTING META VALUE===---
+!metatade-ptr:table(7f6128860a90)
+Lref: table_value({new=function(7f6128860930), __index=table(7f6128860a90)})
+__tostring called
+__tostring called
+__tostring called
+__tostring called
+-->{foo=bar}
+-->{key=value}
+1for pass called. try call function(7f612888ad20)
+data=lightuserdata(3)

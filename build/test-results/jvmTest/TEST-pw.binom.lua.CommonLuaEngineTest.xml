@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="pw.binom.lua.CommonLuaEngineTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-09-16T00:36:58" hostname="subochev-work" time="0.042">
+  <properties/>
+  <testcase name="throwException[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.02"/>
+  <testcase name="getFromTableRef[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.004"/>
+  <testcase name="arrayTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="globalTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="errorCatching[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="lightUserDataTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="autoCleanClosureTest1[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.002"/>
+  <testcase name="autoCleanClosureTest2[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="callTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="test[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.004"/>
+  <testcase name="evalTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="refFuncCall[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.003"/>
+  <testcase name="toStringTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="metatableTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <testcase name="callPassedFunctionTest[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="userDataTest2[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.001"/>
+  <testcase name="testAutoCleanUserData[jvm]" classname="pw.binom.lua.CommonLuaEngineTest" time="0.0"/>
+  <system-out><![CDATA[Called success
+---===CALL===---
+args: [table(7f61288628e0)]
+Getting table value...
+
+
+
+---===GETTING VALUE===---
+done! table_value({lastName=Пупкин, firstName=Вася, getName=function(7f61288609c0)}, metatable: table(7f6128860a90))
+
+
+
+---===GETTING META VALUE===---
+metatade-ptr:table(7f6128860a90)
+ref: table_value({new=function(7f6128860930), __index=table(7f6128860a90)})
+__tostring called
+__tostring called
+__tostring called
+__tostring called
+-->{foo=bar}
+-->{key=value}
+for pass called. try call function(7f612888ad20)
+data=lightuserdata(3)
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
