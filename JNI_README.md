@@ -16,13 +16,14 @@
 
 ## Сборка
 
-В `build.gradle.kts` для каждой платформы (`linuxX64`) добавляется
-`clangBuildDynamic("klua", target)`, который:
+В `build.gradle.kts` для каждой JVM-платформы (Linux x64/arm64, Windows x64,
+macOS — `linuxX64`, `linuxArm64`, `mingwX64`, `macosX64`/`macosArm64` если хост
+— mac) добавляется `clangBuildDynamic("klua", target)`, который:
 
 1. Берёт исходники: `src/nativeMain/lua/*.c` + `src/jvmMain/c/klua_jni.c`
 2. Подключает `jni.h` из активного `JAVA_HOME/include`
 3. Линкуется в shared-library (`-shared -fPIC`)
-4. Копируется в `jvmMain resources` по пути `linux_x64/libklua.so`
+4. Копируется в `jvmMain resources` по пути `linux_x64/libklua.so` / и т.п.
 5. Упаковывается в `klua-jvm.jar` под тем же путём — ресурс-jar подход, без postinstall-скриптов.
 
 Native-loader сам выбирает нужный файл по `os.name`/`os.arch` при `Class.forName`.
@@ -64,9 +65,17 @@ Native-loader сам выбирает нужный файл по `os.name`/`os.a
 гарантирует семантический паритет JVM и native. JVM раннер может
 использовать любой OpenJDK 21.x.
 
+## Кросс-таргеты
+
+Кросс-таргеты (`linuxArm64`, `mingwX64`) регистрируются в build-графе
+всегда, но `onlyIf`-условие на каждом `buildDynamicKlua*`-таске проверяет,
+есть ли на хосте соответствующие JDK headers (`<jdk>/include/<platform>/jni_md.h`).
+Без них таск корректно скипается — `jvmJar` собирает jar из того, что есть.
+
+macOS-таргеты добавляются только когда хост — mac (`KonanTarget.host == MACOS_*`):
+кросс-компиляция с Linux/Windows на Apple-таргеты через kn-clang недоступна.
+
 ## TODO
 
-1. **macOS / Windows host-таргеты**. Сейчас в `build.gradle.kts` настроен только
-   `linuxX64` (нужны `clang+xcode` / `mingw` тулчейны для arm64/x64).
-2. **`metatableTest`**: содержит `LuaValue.setmetatable` функционал, который
+1. **`metatableTest`**: содержит `LuaValue.setmetatable` функционал, который
    не реализован (в posixNative он тоже не используется — только в тесте).

@@ -130,21 +130,23 @@ kotlin {
      * Build Lua 5.4 + klua_jni.c as a dynamic library for each JVM host via clangBuildDynamic.
      * Output naming: build/native/klua/<target>/dynamic/libklua.{so,dylib,dll}.
      *
-     * For now we only register tasks for the host running Gradle: cross-platform fat-jar
-     * bundles (containing libs for Linux/macOS/Windows at once) require per-target JDK
-     * headers which aren't usually available on the build host.
+     * Targets are registered eagerly so the build graph is consistent across platforms;
+     * the actual cross-compile step is what runs (or skips) per host. Linux/Windows targets
+     * require the corresponding cross-toolchain on the build host; macOS targets only
+     * compile when running on macOS (Apple's clang doesn't cross-compile from Linux/Windows
+     * without SDK hacking, so we don't bother).
      */
     val currentHost = org.jetbrains.kotlin.konan.target.HostManager.host
-    val jvmHostTargets = listOfNotNull(
-        when (currentHost) {
-            org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_X64,
-            org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_ARM64 -> currentHost
-            org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_X64,
-            org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_ARM64 -> currentHost
-            org.jetbrains.kotlin.konan.target.KonanTarget.MINGW_X64 -> currentHost
-            else -> null
+    val isMacHost = currentHost == org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_X64 ||
+            currentHost == org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_ARM64
+    val jvmHostTargets = buildList {
+        add(org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_X64)
+        add(org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_ARM64)
+        add(org.jetbrains.kotlin.konan.target.KonanTarget.MINGW_X64)
+        if (isMacHost) {
+            add(currentHost)
         }
-    )
+    }
     val jvmBuildTasks = jvmHostTargets.associateWith { target ->
         // Platform-specific JNI include: JAVA_HOME/include/<linux|darwin|win32>
         val platform = when (target.family) {
@@ -175,6 +177,18 @@ kotlin {
             if (jdkIncludePlatform.isNotEmpty()) include(File(jdkIncludePlatform))
             compileDir(sourceDir = LUA_SOURCES_DIR)
             compileDir(sourceDir = JNI_SOURCES_DIR)
+        }.also { dynamicTask ->
+            // Cross-targets gracefully no-op when the host can't build them: llvm-as
+            // and the platform-specific JDK headers (jni_md.h) aren't always present.
+            // Keeping the task in the graph means `gradle tasks` / IDEs see the full
+            // target list; on capable hosts the real cross-compile happens automatically.
+            val needsCrossCompile = target != currentHost
+            if (needsCrossCompile) {
+                val jdkIncludeOk = jdkInclude.isNotEmpty() && jdkIncludePlatform.isNotEmpty()
+                dynamicTask.onlyIf("${target.name} build host prerequisites") {
+                    jdkIncludeOk
+                }
+            }
         }
     }
     val jvmCopyTasks = jvmBuildTasks.mapValues { (target, buildTask) ->
