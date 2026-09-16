@@ -242,15 +242,29 @@ class CommonLuaEngineTest : AbstractTest() {
     @Test
     fun metatableTest() = start {
         val e = LuaEngine()
-        val o = ObjectContainer()
-        val metatable = e.makeRef(LuaValue.of(mapOf("key".lua to "value".lua)))
-        val table = e.makeRef(LuaValue.of(mapOf("foo".lua to "bar".lua)))
-
-        assertEquals(LuaValue.Nil, table.metatable)
-        table.metatable = (metatable)
-        println("-->${table.toValue().toMap()}")
-        println("-->${table.metatable.checkedTable().toMap()}")
-//        assertEquals("value", ref.getMetatable().checkedTable().rawGet("key".lua).checkedString())
+        val metatable = LuaValue.TableValue(
+            mapOf("key".lua to "value".lua)
+        )
+        val table = LuaValue.TableValue(
+            mapOf("foo".lua to "bar".lua),
+        )
+        table.metatable = metatable
+        e["my_table"] = e.makeRef(table)
+        // 1. Sanity: my_table is reachable from Lua side at all
+        val presence = e.eval("return my_table ~= nil")[0].checkedBoolean()
+        assertTrue(presence, "my_table should be visible from Lua")
+        // 2. Metatable is set + reachable via getmetatable()
+        val mtType = e.eval("return type(getmetatable(my_table) or {})")[0].checkedString()
+        assertEquals("table", mtType, "metatable should be a table, was ${mtType}")
+        // 3. Walk through metatable entries via getmetatable()
+        val got = e.eval("return getmetatable(my_table).key")[0].checkedString()
+        assertEquals("value", got, "metatable-walk via Lua should round-trip")
+        // 4. Confirm setmetatable works from Lua side too (set from Kotlin,
+        //    then overwrite from Lua, then re-read from Kotlin).
+        e.eval("setmetatable(my_table, {second = 'override'})")
+        assertEquals("override",
+            e.eval("return getmetatable(my_table).second")[0].checkedString(),
+            "Lua-side setmetatable should be visible to subsequent reads")
     }
 
     @Test
@@ -300,6 +314,14 @@ class CommonLuaEngineTest : AbstractTest() {
     @Test
     fun test() = start {
 
+        // This test was originally a debugging scratch — it ran a `Person:new`
+        // Lua OOP scenario and traced the closure/table/metatable path with
+        // println calls. It didn't assert anything. The metatable-related code
+        // paths are now covered by [metatableTest] and [toStringTest]; the
+        // call-closure dispatch is covered by [callTest] and [callPassedFunctionTest].
+        // Kept here as a smoke-run for the OOP-shape eval that exercises closure
+        // dispatch + metatables + table indexing all at once. If any of those
+        // regress catastrophically this test will surface a LuaException.
         val e = LuaEngine()
         val c = ObjectContainer()
 
@@ -317,62 +339,39 @@ class CommonLuaEngineTest : AbstractTest() {
         e.eval("print(my_data)")
 
         e["myfunc"] = c.makeClosure {
-            println("args: $it")
-            println("Getting table value...")
+            // value.metatable is now a Kotlin TableValue (after the ref=false
+            // fix in readValueAt) — read its entries directly without trying
+            // to cast back to TableRef. The previous code path took metatable
+            // via ref=true and returned a TableRef; the registry-leak fix
+            // changed the contract here, so walk the TableValue directly.
             val ref = it[0].checkedTable().checkedTableRef()
-            println("\n\n\n---===GETTING VALUE===---")
             val value = ref.toValue()
-            println("done! $value")
-
-            val meta = value.metatable
-            println("\n\n\n---===GETTING META VALUE===---")
-            println("metatade-ptr:$meta")
-            // value.metatable is the Kotlin TableValue walked from Lua state
-            // (ref=false in readValueAt — populated during toValue()). It is
-            // a TableValue, not a TableRef: there's no Lua registry slot for
-            // it. The earlier code path took metatable via ref=true and
-            // returned a TableRef; the ref=false fix means we no longer
-            // inflate the registry, but the contract changed here, so just
-            // walk the TableValue directly.
-            val metaAsValue = meta.checkedTable().toValue()
-            println("ref: $metaAsValue")
+            val walked = value.metatable.checkedTable().toMap()
             listOf(LuaValue.of("Hello from kotlin.  Got "))
         }
-//        e.eval("print('Result: ' .. myfunc(createTable,'my_data_for_function'))")
         e.eval(
             """
 --класс
 Person = {}
 --тело класса
 function Person:new(fName, lName)
-
-    -- свойства
     local obj= {}
         obj.firstName = fName
         obj.lastName = lName
-
-    -- метод
     function obj:getName()
-        return self.firstName 
+        return self.firstName
     end
-
-    --чистая магия!
     setmetatable(obj, self)
     self.__index = self; return obj
 end
 
 --создаем экземпляр класса
 vasya = Person:new("Вася", "Пупкин")
-
---обращаемся к свойству
-print(vasya.firstName)    --> результат: Вася
-print(vasya.lastName)    --> результат: Пупкин
-
---обращаемся к методу
-print(vasya:getName())  --> результат: Вася
+print(vasya.firstName)
+print(vasya.lastName)
+print(vasya:getName())
 print('metatable:',getmetatable(vasya))
 myfunc(vasya)
---myfunc(getmetatable(vasya))
         """
         )
     }
