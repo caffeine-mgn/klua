@@ -168,6 +168,44 @@ class JvmAcDisposeTest {
     }
 
     /**
+     * Regression guard for the orphan-entry bug in
+     * [LuaEngine.createUserData] (LightUserData overload): the function
+     * stored the value at the userdata's mem address AND left the original
+     * ptr-keyed entry in [StaticRefs], inflating the map by one per call
+     * until the LightUserData wrapper itself was GC'd. With the fix the
+     * ptr entry is consumed (disposed) and the userdata gets its own
+     * `__gc` metamethod so the mem entry is dropped on Lua-side dispose.
+     */
+    @Test
+    fun createUserDataFromLightUserDataDoesNotOrphanEntries() {
+        val engine = LuaEngine()
+        val baseline = StaticRefs.size
+        fun makeAndDrop() {
+            val oc = ObjectContainer()
+            for (i in 1..10) {
+                val payload = "payload-${i}-${System.nanoTime()}"
+                val lud = oc.add(payload)
+                engine["x"] = engine.createUserData(lud)
+            }
+            engine.eval("x = nil")
+        }
+        repeat(10) { makeAndDrop() }
+        for (pass in 1..50) {
+            System.gc()
+            System.runFinalization()
+            engine.eval("collectgarbage('collect')")
+            Thread.sleep(20)
+            if (StaticRefs.size <= baseline + 5) break
+        }
+        val after = StaticRefs.size
+        assertTrue(after <= baseline + 5,
+            "StaticRefs grew under createUserData(LightUserData) loop " +
+            "(baseline=$baseline, after=$after, delta=${after - baseline}). " +
+            "Either the orphan ptr-entry isn't being disposed or the userdata " +
+            "is missing its __gc metamethod.")
+    }
+
+    /**
      * Regression guard for the [ObjectContainer] bridge leak: every
      * `makeClosure` registered an entry in the JVM-global [LuaNative.callbacks]
      * map, and prior to this commit nothing removed them when the container

@@ -104,10 +104,27 @@ actual class LuaEngine : AutoCloseable {
     }
 
     actual fun createUserData(value: LuaValue.LightUserData): LuaValue.UserData {
+        // Read the value out of the existing StaticRefs slot, then place it
+        // under the userdata's own mem address (so Lua's __gc trampoline
+        // — klua_userdata_gc_trampoline → disposeUserdata(mem) → StaticRefs
+        // .dispose(mem) — has a slot to drop). The original `ptr` slot is
+        // disposed here because the value has been moved into the userdata;
+        // leaving it in place would inflate StaticRefs by one per call
+        // until the LightUserData wrapper itself was GC'd, which is what
+        // caused the orphan-entry bug this fix closes.
+        //
+        // The __gc metamethod is set so Lua collects the mem entry on
+        // userdata disposal — without it, the mem entry would be stranded
+        // for the lifetime of the Lua state (the same shape of leak that
+        // hit createUserData(Any) before commit 595d8b4).
+        val underlying = value.value
         val mem = LuaNative.newUserdata(ll.state, PTR_SIZE)
-        StaticRefs.store(mem, value.ptr?.let { StaticRefs.get(it) })
+        StaticRefs.store(mem, underlying)
+        if (value.ptr != null) StaticRefs.dispose(value.ptr)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
-        return LuaValue.UserData(refId, ll)
+        val ud = LuaValue.UserData(refId, ll)
+        ud.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
+        return ud
     }
 
     actual fun createUserData(value: Any): LuaValue.UserData {
