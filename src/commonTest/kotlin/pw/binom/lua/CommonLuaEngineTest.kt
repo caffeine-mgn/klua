@@ -117,6 +117,7 @@ class CommonLuaEngineTest : AbstractTest() {
         assertEquals(3, argCount)
     }
 
+
     @Test
     fun toStringTest() = start {
         val e = LuaEngine()

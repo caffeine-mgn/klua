@@ -34,6 +34,8 @@ static JavaVM* klua_jvm = NULL;
 static jclass stringClass = NULL;
 static jclass luaNativeClass = NULL;
 static jmethodID invokeCallbackMethod = NULL;
+static jmethodID disposeCallbackMethod = NULL;
+static jmethodID disposeUserdataMethod = NULL;
 static jmethodID lastErrorMessageMethod = NULL;
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
@@ -51,6 +53,10 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     (*env)->DeleteLocalRef(env, cls);
     invokeCallbackMethod = (*env)->GetStaticMethodID(env, luaNativeClass, "invokeCallback", "(IJ)J");
     if (invokeCallbackMethod == NULL) return JNI_ERR;
+    disposeCallbackMethod = (*env)->GetStaticMethodID(env, luaNativeClass, "disposeCallback", "(I)V");
+    if (disposeCallbackMethod == NULL) return JNI_ERR;
+    disposeUserdataMethod = (*env)->GetStaticMethodID(env, luaNativeClass, "disposeUserdata", "(J)V");
+    if (disposeUserdataMethod == NULL) return JNI_ERR;
     lastErrorMessageMethod = (*env)->GetStaticMethodID(env, luaNativeClass, "lastErrorMessage", "()Ljava/lang/String;");
     if (lastErrorMessageMethod == NULL) return JNI_ERR;
     jclass localString = (*env)->FindClass(env, "java/lang/String");
@@ -158,6 +164,55 @@ static int klua_callback_trampoline(lua_State* L) {
 
     klua_detach(detach);
     return nresults;
+}
+
+/*
+ * Trampoline: __gc metamethod for any userdata whose payload holds a callback
+ * id (int). Looks up the bridge in the Kotlin-side registry and removes it.
+ *
+ * Lua guarantees the userdata is at idx 1 when __gc fires. We do NOT longjmp
+ * out of this function — Lua's __gc must not raise an error — so any JVM
+ * exception raised by disposeCallback is swallowed.
+ */
+static int klua_gc_trampoline(lua_State* L) {
+    int idx = (int)lua_tointeger(L, lua_upvalueindex(1));
+    JNIEnv* env = NULL;
+    int detach = klua_attach(&env);
+    if (env != NULL && disposeCallbackMethod != NULL) {
+        (*env)->CallStaticVoidMethod(env, luaNativeClass, disposeCallbackMethod, (jint)idx);
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionDescribe(env);
+            (*env)->ExceptionClear(env);
+        }
+    }
+    if (env != NULL) klua_detach(detach);
+    return 0;
+}
+
+/*
+ * Trampoline: __gc metamethod for any userdata whose payload IS the data
+ * pointer (no separate registry needed). Lua pushes the userdata as self
+ * (idx 1); we read its payload address (= what newUserdata returned on the
+ * Kotlin side) and forward it to disposeUserdata(mem), which the Kotlin
+ * StaticRefs layer uses to drop the mapped value.
+ *
+ * Used as the default `__gc` for userdata created via createUserData(value).
+ */
+static int klua_userdata_gc_trampoline(lua_State* L) {
+    if (lua_type(L, 1) != LUA_TUSERDATA) return 0;
+    void* ud = lua_touserdata(L, 1);
+    if (ud == NULL) return 0;
+    JNIEnv* env = NULL;
+    int detach = klua_attach(&env);
+    if (env != NULL && disposeUserdataMethod != NULL) {
+        (*env)->CallStaticVoidMethod(env, luaNativeClass, disposeUserdataMethod, (jlong)(intptr_t)ud);
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionDescribe(env);
+            (*env)->ExceptionClear(env);
+        }
+    }
+    if (env != NULL) klua_detach(detach);
+    return 0;
 }
 
 /*
@@ -305,6 +360,29 @@ JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushCClosure(JNIEnv* env, jcl
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushCFunction(JNIEnv* env, jclass cls, jlong statePtr, jint callbackId) {
     Java_pw_binom_lua_LuaNative_pushCClosure(env, cls, statePtr, callbackId, 0);
+}
+
+/*
+ * Push a plain cfunction (closure of 0 upvalues) wired to [klua_gc_trampoline].
+ * Use as the `__gc` metamethod of any userdata whose payload (or whose associated
+ * Lua-side value) holds a callback id (int). The trampoline recovers the id from
+ * upvalue 1 and disposes the corresponding Kotlin bridge.
+ */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushGcFunction(JNIEnv* env, jclass cls, jlong statePtr, jint callbackId) {
+    (void)env; (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    lua_pushinteger(L, (lua_Integer)callbackId);
+    lua_pushcclosure(L, klua_gc_trampoline, 1);
+}
+
+/*
+ * Push a plain cfunction (closure of 0 upvalues) wired to [klua_userdata_gc_trampoline].
+ * Use as the `__gc` metamethod of any userdata whose payload (as returned by
+ * newUserdata) carries the data pointer the JVM side wants disposed on GC.
+ */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushUserdataGcFunction(JNIEnv* env, jclass cls, jlong statePtr) {
+    (void)env; (void)cls;
+    lua_pushcfunction(jlong_to_lua_state(statePtr), klua_userdata_gc_trampoline);
 }
 
 JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_registerCallback(JNIEnv* env, jclass cls, jlong statePtr) {

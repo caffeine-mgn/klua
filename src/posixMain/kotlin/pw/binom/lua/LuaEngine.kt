@@ -3,32 +3,16 @@ package pw.binom.lua
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
 import platform.internal_lua.*
-import kotlin.experimental.ExperimentalNativeApi
-import kotlin.native.ref.createCleaner
 
 @OptIn(ExperimentalForeignApi::class)
 actual class LuaEngine actual constructor() : AutoCloseable {
-    companion object {
-//        const val STATE_PTR_NAME = "global_state"
-    }
 
     internal val ll = LuaContext()
-    private val contextPtr = StableRef.create(ll)
-
-    init {
-//        lua_pushlightuserdata(ll.state, contextPtr.asCPointer())
-//        lua_setglobal(ll.state, STATE_PTR_NAME)
-    }
-
-    @OptIn(ExperimentalNativeApi::class)
-    private val cleaner = createCleaner(contextPtr) {
-        it.dispose()
-    }
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(closureGc))
+        makeRef(LuaValue.FunctionValue(userdataGc))
     actual val userdataAutoGcFunction: LuaValue.FunctionRef =
-        makeRef(LuaValue.FunctionValue(userdataGc, upValues = listOf(LuaValue.LightUserData(contextPtr))))
+        makeRef(LuaValue.FunctionValue(userdataGc))
 
 
     actual override fun close() {
@@ -145,19 +129,30 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
+        // The function ref is passed as a 1-upvalue Lua closure (which becomes
+        // the __call metamethod) — same dispatch path as ObjectContainer.makeClosure,
+        // just with __call installed on a userdata metatable. The userdata payload
+        // is a no-op pointer that the new userdataGc disposes the function ref via
+        // a parallel mechanism — but actually, since __call is a Lua closure with
+        // its own upvalue, it does NOT need the userdata payload to find the
+        // function. We use the userdata payload solely so userdataGc has something
+        // on Lua's __gc call to dispose.
+        //
+        // To keep things consistent, we put the SAME StableRef pointer in BOTH the
+        // closure upvalue AND the userdata payload: closure upvalue is what
+        // CLOSURE_FUNCTION reads at call time; userdata payload is what userdataGc
+        // reads at dispose time. They point at the same StableRef<LuaFunction>;
+        // userdataGc disposes it once.
         val ref = StableRef.create(func)
         val luaFunc = LuaValue.FunctionValue(
             ptr = CLOSURE_FUNCTION,
-            upValues = listOf(
-                LuaValue.LightUserData(ref.asCPointer()),
-            ),
+            upValues = listOf(LuaValue.LightUserData(ref.asCPointer())),
         )
-        val metatable = LuaValue.TableValue(
+        val userData = createUserData(LuaValue.LightUserData(ref.asCPointer()))
+        userData.metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
-            "__gc".lua to closureAutoGcFunction
+            "__gc".lua to closureAutoGcFunction,
         )
-        val userData = createUserData(LuaValue.LightUserData(AC_CLOSURE_PTR))
-        userData.metatable = metatable
         return userData
     }
 

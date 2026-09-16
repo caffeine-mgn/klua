@@ -38,4 +38,8 @@ internal object StaticRefs {
         }
         return false
     }
+
+    /** JVM-test hook: number of live AC/static-ref entries. */
+    internal val size: Int
+        get() = synchronized(map) { map.size }
 }

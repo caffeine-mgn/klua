@@ -1,5 +1,7 @@
 package pw.binom.lua
 
+import java.lang.ref.Cleaner
+
 actual sealed interface LuaValue {
     actual class FunctionValue(val callbackId: Int) : LuaValue {
         override fun toString(): kotlin.String = "function_value($callbackId)"
@@ -13,6 +15,23 @@ actual sealed interface LuaValue {
         override val refId: Int,
         internal val ll: LuaContext,
     ) : RefObject, Data {
+
+        // Without an auto-cleaner the Lua-side reference (LUA_REGISTRYINDEX[refId])
+        // would live for the entire JVM lifetime — which in turn would keep the
+        // underlying Lua userdata alive forever and prevent Lua's __gc from
+        // ever firing. Java's Cleaner runs the action only once this object
+        // becomes phantom-reachable, so this closes the leak while staying
+        // GC-driven (no explicit close() required by callers).
+        //
+        // The action must NOT capture `this` (otherwise the strong reference
+        // would keep the userdata alive forever, defeating the whole point of
+        // using a Cleaner). Instead it captures the (ll, refId) pair needed to
+        // resolve the Lua userdata's memory address at run-time.
+        @Suppress("unused")
+        private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
+            this,
+            UserDataAction(ll.state, refId),
+        )
 
         val ptr: Long?
             get() {
@@ -47,7 +66,30 @@ actual sealed interface LuaValue {
             StaticRefs.dispose(p)
             LuaNative.unref(ll.state, LUA_REGISTRYINDEX, refId)
         }
+
+        // Cleaner action: invoked when this UserData becomes phantom-reachable.
+        // The action captures only (statePtr, refId) — NOT `this` — to avoid
+        // creating a strong reference cycle that would prevent the userdata
+        // from ever becoming phantom-reachable in the first place.
+        private class UserDataAction(
+            private val statePtr: Long,
+            private val refId: Int,
+        ) : Runnable {
+            override fun run() {
+                // Resolve the Lua userdata's memory address from the registry
+                // entry, then drop both the StaticRefs entry and the registry
+                // reference. The userdata becomes Lua-orphaned, so Lua's next
+                // collectgarbage() runs __gc → disposeUserdata(mem) on the
+                // (now-cleaned) Kotlin side.
+                LuaNative.rawGetI(statePtr, LUA_REGISTRYINDEX, refId.toLong())
+                val p = LuaNative.userdataPtr(statePtr, -1)
+                LuaNative.pop(statePtr, 1)
+                if (p != 0L) StaticRefs.dispose(p)
+                LuaNative.unref(statePtr, LUA_REGISTRYINDEX, refId)
+            }
+        }
     }
+
 
     actual class LightUserData(val ptr: Long?) : Data {
         actual constructor(value: Any?) : this(StaticRefs.intern(value))
@@ -250,6 +292,13 @@ actual sealed interface LuaValue {
     }
 
     actual companion object {
+        // JVM-side cleaner shared across all RefObject subclasses; each
+        // registers itself with a no-arg lambda that calls back into the
+        // instance. The cleaner itself runs on a daemon thread and does not
+        // prevent JVM shutdown.
+        @JvmField
+        val REFCLEANER: Cleaner = Cleaner.create()
+
         actual fun of(value: Double): Number = Number(value)
         actual fun of(value: Long): LuaInt = LuaInt(value)
         actual fun of(value: kotlin.Boolean): Boolean = Boolean(value)

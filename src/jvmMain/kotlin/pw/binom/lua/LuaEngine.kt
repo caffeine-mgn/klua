@@ -4,16 +4,29 @@ actual class LuaEngine : AutoCloseable {
 
     internal val ll: LuaContext = LuaContext()
 
-    actual val closureAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef { _ -> emptyList<LuaValue>() }
-    actual val userdataAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef { ctx ->
-        StaticRefs.dispose(LuaNative.toUserdata(ctx.state, -1))
-        emptyList()
+    actual val closureAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef()
+    actual val userdataAutoGcFunction: LuaValue.FunctionRef = makeUserdataGcRef()
+
+    private fun makeAutoGcRef(): LuaValue.FunctionRef {
+        // The GC trampoline (klua_gc_trampoline in klua_jni.c) looks up the
+        // callback id in LuaNative.callbacks via disposeCallback(id). Each
+        // userdata with this __gc releases its own bridge when collected.
+        // No LuaCallbackBridge handler is needed on the Kotlin side anymore
+        // — the previous empty-handler pattern leaked bridge entries for the
+        // lifetime of the JVM.
+        val id = LuaNative.nextCallbackId()
+        LuaNative.pushGcFunction(ll.state, id)
+        val ptr = LuaNative.toPointer(ll.state, -1)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        return LuaValue.FunctionRef(refId, ptr, ll)
     }
 
-    private fun makeAutoGcRef(handler: LuaCallbackBridge): LuaValue.FunctionRef {
-        val id = LuaNative.nextCallbackId()
-        LuaNative.setCallback(id, handler)
-        LuaNative.pushCFunction(ll.state, id)
+    private fun makeUserdataGcRef(): LuaValue.FunctionRef {
+        // The userdata-gc trampoline (klua_userdata_gc_trampoline in klua_jni.c)
+        // reads the userdata's payload address at idx 1 and forwards it to
+        // disposeUserdata(mem) → StaticRefs.dispose(mem). One cfunction serves
+        // every AC userdata (the payload carries the per-instance key).
+        LuaNative.pushUserdataGcFunction(ll.state)
         val ptr = LuaNative.toPointer(ll.state, -1)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         return LuaValue.FunctionRef(refId, ptr, ll)
@@ -98,12 +111,16 @@ actual class LuaEngine : AutoCloseable {
     }
 
     actual fun createUserData(value: Any): LuaValue.UserData {
-        val ptr = StaticRefs.intern(value)
+        // Allocate the Lua userdata first so we know its memory address —
+        // that's the StaticRefs key, so __gc can find the right entry to
+        // remove. (Previously the code interned under a counter and then
+        // stored again at the userdata address, which left a stale orphan
+        // entry behind on every call and inflated StaticRefs.size.)
         val mem = LuaNative.newUserdata(ll.state, PTR_SIZE)
         StaticRefs.store(mem, value)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         val ud = LuaValue.UserData(refId, ll)
-        ud.metatable = LuaValue.TableValue("__gc".lua to closureAutoGcFunction)
+        ud.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
         return ud
     }
 
@@ -149,9 +166,11 @@ actual class LuaEngine : AutoCloseable {
     }
 
     actual fun createAC(value: Any?): LuaValue.UserData {
-        val ptr = value?.let { StaticRefs.intern(it) }
-        val ud = createAC(LuaValue.LightUserData(ptr))
-        return ud
+        // createUserData(Any) is the one that owns the StaticRefs entry under
+        // the userdata's memory address. Calling createAC(LightUserData) would
+        // duplicate the entry through StaticRefs.intern + store(mem, get(ptr))
+        // and leave the interned entry orphaned once __gc drops the mem entry.
+        return if (value != null) createUserData(value) else createUserData(LuaValue.LightUserData(null))
     }
 
     companion object {

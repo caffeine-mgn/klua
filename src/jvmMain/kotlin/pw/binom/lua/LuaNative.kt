@@ -34,6 +34,8 @@ internal object LuaNative {
     external fun pushLightUserdata(state: Long, ptr: Long)
     external fun pushCClosure(state: Long, callbackId: Int, n: Int)
     external fun pushCFunction(state: Long, callbackId: Int)
+    external fun pushGcFunction(state: Long, callbackId: Int)
+    external fun pushUserdataGcFunction(state: Long)
     external fun reserveCallbackId(state: Long): Int
 
     external fun toBoolean(state: Long, idx: Int): Boolean
@@ -120,15 +122,32 @@ internal object LuaNative {
         }
     }
 
+    /**
+     * Invoked from the C-side [klua_gc_trampoline] (see klua_jni.c) when a
+     * userdata that owns a callback id is collected. Removes the bridge from
+     * the registry so the JVM-side Kotlin object becomes eligible for GC.
+     */
+    @JvmStatic
+    fun disposeCallback(id: Int) {
+        callbacks.remove(id)
+    }
+
+    /**
+     * Invoked from the C-side [klua_userdata_gc_trampoline] (see klua_jni.c)
+     * when a userdata whose payload is the [mem] address is collected.
+     * Drops the corresponding [StaticRefs] entry so the Kotlin value becomes
+     * eligible for GC.
+     */
+    @JvmStatic
+    fun disposeUserdata(mem: Long) {
+        StaticRefs.dispose(mem)
+    }
+
     @Volatile
     private var lastError: Throwable? = null
 
     @JvmStatic
     fun lastErrorMessage(): String? = lastError?.let { it::class.simpleName + ": " + (it.message ?: "") }
-
-    init {
-        init()
-    }
 }
 
 internal fun interface LuaCallbackBridge {

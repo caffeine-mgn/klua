@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 internal object NativeLoader {
 
-    private const val VERSION = "1.0.1-debug"
+    private const val VERSION = "1.1.0-debug"
     private val loaded = ConcurrentHashMap.newKeySet<String>()
 
     fun load() {
