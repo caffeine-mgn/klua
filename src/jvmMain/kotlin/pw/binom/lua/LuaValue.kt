@@ -159,6 +159,20 @@ actual sealed interface LuaValue {
         internal val ll: LuaContext,
     ) : Table, RefObject {
 
+        // Auto-clean the LUA_REGISTRYINDEX entry when the wrapper is GC'd —
+        // without this every read of a table from Lua would leak one slot in
+        // Lua's registry forever (the registry is a hard root, so the Lua
+        // table would also stay alive, blocking its own __gc path).
+        //
+        // The action captures (statePtr, refId) only — capturing `this` would
+        // create a strong reference cycle and prevent the wrapper from ever
+        // becoming phantom-reachable.
+        @Suppress("unused")
+        private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
+            this,
+            RefAction(ll.state, refId),
+        )
+
         actual override operator fun get(key: LuaValue): LuaValue {
             ll.push(this)
             pushValue(ll.state, key)
@@ -242,6 +256,15 @@ actual sealed interface LuaValue {
         val ptr: Long,
         internal val ll: LuaContext,
     ) : Ref, Callable {
+
+        // Auto-clean the LUA_REGISTRYINDEX entry when the wrapper is GC'd.
+        // See TableRef.cleanable for the rationale.
+        @Suppress("unused")
+        private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
+            this,
+            RefAction(ll.state, refId),
+        )
+
         override fun toString(): kotlin.String = "function(${ptr.toString(16)})"
 
         actual override fun call(vararg args: LuaValue): List<LuaValue> {
@@ -258,6 +281,23 @@ actual sealed interface LuaValue {
 
         override fun equals(other: Any?): kotlin.Boolean = other is FunctionRef && refId == other.refId
         override fun hashCode(): Int = refId
+    }
+
+    /**
+     * Shared Cleaner action for TableRef / FunctionRef: drops the
+     * LUA_REGISTRYINDEX entry registered by `luaL_ref` once the Kotlin
+     * wrapper becomes phantom-reachable. State-pointer == 0L means the
+     * owning engine was already closed; the action becomes a no-op so it
+     * never touches freed Lua memory.
+     */
+    private class RefAction(
+        private val statePtr: Long,
+        private val refId: Int,
+    ) : Runnable {
+        override fun run() {
+            if (statePtr == 0L) return
+            LuaNative.unref(statePtr, LUA_REGISTRYINDEX, refId)
+        }
     }
 
     actual class TableValue constructor(

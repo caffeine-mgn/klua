@@ -272,6 +272,31 @@ JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_setTop(JNIEnv* env, jclass cl
     lua_settop(jlong_to_lua_state(statePtr), (int)top);
 }
 
+/*
+ * Test helper: count the number of entries in LUA_REGISTRYINDEX.
+ *
+ * The registry is a regular Lua table — `lua_rawlen` gives its array-part size,
+ * which is also the count of `luaL_ref` entries (the table uses integer keys
+ * starting at 1). Used by JvmAcDisposeTest's "registry does not grow under a
+ * tight read+drop loop" guard.
+ */
+JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_registrySize(JNIEnv* env, jclass cls, jlong statePtr) {
+    (void)env; (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    /* Walk array part of registry to find the highest slot. lua_rawlen gives
+     * size up to the first nil; anything above is also reachable but the count
+     * is meaningful as "active ref() entries". */
+    int n = (int)lua_rawlen(L, LUA_REGISTRYINDEX);
+    /* Also probe past the first nil — ref() may allocate slots above it. */
+    int next_free = n + 1;
+    while (lua_rawgeti(L, LUA_REGISTRYINDEX, next_free) != LUA_TNIL) {
+        lua_pop(L, 1);
+        next_free++;
+    }
+    lua_pop(L, 1);  /* drop the nil probe */
+    return next_free - 1;
+}
+
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pop(JNIEnv* env, jclass cls, jlong statePtr, jint n) {
     (void)env; (void)cls;
     lua_settop(jlong_to_lua_state(statePtr), -(int)n - 1);

@@ -18,6 +18,7 @@ internal object LuaNative {
 
     external fun getTop(state: Long): Int
     external fun setTop(state: Long, top: Int)
+    external fun registrySize(state: Long): Int
     external fun pop(state: Long, n: Int)
     external fun pushValue(state: Long, idx: Int)
     external fun remove(state: Long, idx: Int)
@@ -111,7 +112,13 @@ internal object LuaNative {
     fun invokeCallback(id: Int, statePtr: Long): Long {
         val cb = callbacks[id] ?: return 0L
         return try {
-            val ctx = LuaContext(statePtr)
+            // The Lua-Native side bridges the raw `lua_State*` pointer back into
+            // a Kotlin LuaContext for callback dispatch. Since this happens
+            // inside a single native call, we can wrap the pointer in a
+            // minimal LuaContext without going through the full constructor
+            // (which would allocate a new Lua state — there's nothing to manage
+            // here, the state is owned by the engine that registered the bridge).
+            val ctx = LuaContext.wrap(statePtr)
             val results = cb.invoke(ctx)
             val nresults = results.size
             results.forEach { ctx.push(it) }
