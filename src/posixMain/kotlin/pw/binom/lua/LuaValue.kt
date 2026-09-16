@@ -168,7 +168,10 @@ actual sealed interface LuaValue {
                 ll.pushValue(key)
                 lua_rawget(ll.state, -2)
                 val value = ll.readValue(-1, true)
-                lua_pop(ll.state, 1)
+                // Pop both the looked-up value AND the table-ref pushed via
+                // ll.pushValue(this). pop(1) would leave the table-ref on
+                // the stack and slowly grow it.
+                lua_pop(ll.state, 2)
                 return value
             }
         }

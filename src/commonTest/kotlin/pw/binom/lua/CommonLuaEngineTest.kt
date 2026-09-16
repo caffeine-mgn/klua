@@ -375,4 +375,160 @@ myfunc(vasya)
         """
         )
     }
+
+    @Test
+    fun createUserDataFromAnyTest() = start {
+        // createUserData(Any) takes a Kotlin object and wraps it in a
+        // userdata so the object survives across Lua calls (until the
+        // userdata is __gc'd or explicitly disposed).
+        val e = LuaEngine()
+        val obj = MyObject(42)
+        val ud = e.createUserData(obj)
+        // Read the value back via .value() — the userdata's payload.
+        assertEquals(42, ud.value<MyObject>().value,
+            "createUserData(Any) should preserve the wrapped object")
+        // Mutate through the userdata; the original Kotlin ref sees it.
+        ud.value<MyObject>().value = 99
+        assertEquals(99, obj.value)
+        // Mutate from Kotlin side; userdata's payload ref sees it.
+        obj.value = 7
+        assertEquals(7, ud.value<MyObject>().value)
+    }
+
+    @Test
+    fun createACFromAnyTest() = start {
+        // createAC(Any?) is the auto-clean equivalent of createUserData(Any).
+        // Object should remain reachable while userdata is alive.
+        val e = LuaEngine()
+        val obj = MyObject(7)
+        val ud = e.createAC(obj)
+        assertEquals(7, ud.value<MyObject>().value,
+            "createAC should wrap the object and preserve its value")
+        obj.value = 100
+        assertEquals(100, ud.value<MyObject>().value,
+            "createAC should keep live ref to the original Kotlin object")
+    }
+
+    @Test
+    fun createACFromLightUserDataTest() = start {
+        // createAC(LightUserData) takes a LightUserData from an
+        // ObjectContainer — same wrap-and-pin behaviour as createUserData
+        // (the LightUserData variant, the LightUserData already points at
+        // a Kotlin object via StaticRefs/StaticRefs-equivalent).
+        val e = LuaEngine()
+        val oc = ObjectContainer()
+        val payload = MyObject(33)
+        val lud = oc.add(payload)
+        val ud = e.createAC(lud)
+        assertEquals(33, ud.value<MyObject>().value)
+    }
+
+    @Test
+    fun callByNameTest() = start {
+        // call(functionName, ...) invokes a Lua-side global function.
+        val e = LuaEngine()
+        e["greet"] = e.eval("return function(name) return 'hi '..name end")[0]
+        val res = e.call("greet", "World".lua)
+        assertEquals(1, res.size)
+        assertEquals("hi World", res[0].checkedString())
+    }
+
+    @Test
+    fun evalMultipleReturnsTest() = start {
+        // eval() should expose all returned values in order.
+        val e = LuaEngine()
+        val res = e.eval("return 1, 'two', 3.0")
+        assertEquals(3, res.size)
+        assertEquals(1.0, res[0].checkedNumber())
+        assertEquals("two", res[1].checkedString())
+        assertEquals(3.0, res[2].checkedNumber())
+    }
+
+    @Test
+    fun evalRuntimeErrorThrowsLuaException() = start {
+        val e = LuaEngine()
+        try {
+            e.eval("error('boom')")
+            fail("Lua-side error() should propagate as LuaException")
+        } catch (e: LuaException) {
+            assertTrue(
+                e.message?.contains("boom") == true,
+                "LuaException message should carry the Lua error text, was: ${e.message}")
+        }
+    }
+
+    @Test
+    fun engineReuseMultipleEvalsTest() = start {
+        // A single LuaEngine should handle many evals back-to-back without
+        // state leakage between them.
+        val e = LuaEngine()
+        e.eval("counter = 0")
+        for (i in 1..5) {
+            e.eval("counter = counter + 1")
+        }
+        assertEquals(5.0, e["counter"].checkedNumber(),
+            "engine reuse across multiple eval() calls should accumulate state")
+    }
+
+    @Test
+    fun closureWithManyArgsTest() = start {
+        // A Kotlin closure taking several arguments should see them all
+        // arrive from Lua side.
+        val e = LuaEngine()
+        var totalArgs = 0
+        var sumOfArgs = 0
+        e["sum"] = e.createACClosure { args ->
+            totalArgs = args.size
+            sumOfArgs = args.sumOf { it.checkedNumber().toInt() }
+            emptyList()
+        }
+        e.eval("sum(1, 2, 3, 4, 5)")
+        assertEquals(5, totalArgs,
+            "closure should receive all 5 args from Lua side")
+        assertEquals(15, sumOfArgs,
+            "closure should sum them correctly")
+    }
+
+    @Test
+    fun closureMultipleReturnValuesTest() = start {
+        // A closure returning a list of LuaValues should be visible to Lua
+        // as multiple return values.
+        val e = LuaEngine()
+        e["multi"] = e.createACClosure { _ ->
+            listOf("a".lua, 42.0.lua, true.lua)
+        }
+        val r1 = e.eval("return multi()")[0].checkedString()
+        val r2 = e.eval("return multi()")[1].checkedNumber()
+        val r3 = e.eval("return multi()")[2].checkedBoolean()
+        assertEquals("a", r1)
+        assertEquals(42.0, r2)
+        assertTrue(r3)
+    }
+
+    @Test
+    fun setGlobalAndReadBackTest() = start {
+        // Direct set + get of a global; ensures both halves of the
+        // engine["x"] / engine["x"] =  idiom round-trip cleanly.
+        val e = LuaEngine()
+        e["g"] = LuaValue.of("hello")
+        assertEquals("hello", e["g"].checkedString(),
+            "string set via []=, read via []")
+        e["g"] = LuaValue.of(3.14)
+        assertEquals(3.14, e["g"].checkedNumber(),
+            "double set via []=, read via []")
+        e["g"] = LuaValue.Nil
+        assertEquals(LuaValue.Nil, e["g"],
+            "Nil set via []=, read back as Nil")
+    }
+
+    @Test
+    fun tableRawGetSetTest() = start {
+        // rawGet/rawSet bypass any __index/__newindex metamethods.
+        val e = LuaEngine()
+        e["t"] = LuaValue.of(mapOf("a".lua to 1.0.lua))
+        assertEquals(1.0, e["t"].checkedTable().rawGet("a".lua).checkedNumber())
+        // rawSet then rawGet — should round-trip.
+        e["t"].checkedTable().rawSet("b".lua, 2.0.lua)
+        assertEquals(2.0, e["t"].checkedTable().rawGet("b".lua).checkedNumber())
+    }
 }

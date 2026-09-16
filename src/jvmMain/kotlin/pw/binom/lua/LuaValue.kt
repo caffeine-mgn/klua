@@ -223,7 +223,10 @@ actual sealed interface LuaValue {
             pushValue(ll.state, key)
             LuaNative.rawGet(ll.state, -2)
             val v = ll.readValue(-1, true)
-            LuaNative.pop(ll.state, 1)
+            // Pop both the looked-up value AND the table-ref pushed via
+            // ll.push(this). pop(1) would leave the table-ref on the stack
+            // and slowly grow it.
+            LuaNative.pop(ll.state, 2)
             return v
         }
 
