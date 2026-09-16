@@ -141,6 +141,42 @@ class JvmAcDisposeTest {
      * the callback map size stays near the baseline (engine-init entries).
      */
     @Test
+    fun lightUserDataDoesNotLeakIntoStaticRefs() {
+        val engine = LuaEngine()
+        val container = ObjectContainer()
+        val baseline = StaticRefs.size
+        fun makeAndDrop() {
+            val oc = ObjectContainer()
+            for (i in 1..10) {
+                val ud = oc.add("payload-$i")  // creates a LightUserData per call
+                engine["x"] = ud
+            }
+            engine.eval("x = nil")
+        }
+        repeat(100) { makeAndDrop() }
+        for (pass in 1..50) {
+            System.gc()
+            System.runFinalization()
+            Thread.sleep(20)
+            if (StaticRefs.size <= baseline + 5) break
+        }
+        val after = StaticRefs.size
+        assertTrue(after <= baseline + 5,
+            "StaticRefs grew under tight LightUserData create+drop " +
+            "(baseline=$baseline, after=$after, delta=${after - baseline}). " +
+            "LightUserData wrappers don't dispose their intern'd entries on GC.")
+    }
+
+    /**
+     * Regression guard for the [ObjectContainer] bridge leak: every
+     * `makeClosure` registered an entry in the JVM-global [LuaNative.callbacks]
+     * map, and prior to this commit nothing removed them when the container
+     * was GC'd. The bridge map would grow unboundedly across many engines.
+     *
+     * We loop create+drop on a fresh ObjectContainer many times and assert
+     * the callback map size stays near the baseline (engine-init entries).
+     */
+    @Test
     fun objectContainerBridgesDoNotLeakIntoCallbacksMap() {
         val engine = LuaEngine()
         val baseline = bridgeCount()

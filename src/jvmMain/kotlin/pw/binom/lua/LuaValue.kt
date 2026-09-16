@@ -93,9 +93,37 @@ actual sealed interface LuaValue {
 
     actual class LightUserData(val ptr: Long?) : Data {
         actual constructor(value: Any?) : this(StaticRefs.intern(value))
+
         actual override val value: Any? get() = StaticRefs.get(ptr)
+
         fun dispose() { StaticRefs.dispose(ptr) }
+
+        // Auto-dispose the StaticRefs entry when the Kotlin wrapper becomes
+        // phantom-reachable. Without this, every `ObjectContainer.add(data)`
+        // or `LightUserData(data)` would leak a slot in [StaticRefs] for the
+        // entire JVM lifetime (the same problem UserData had before commit
+        // 595d8b4, applied to lightuserdata).
+        //
+        // Action captures only `ptr` (primitive) and a function reference to
+        // `StaticRefs.dispose` — no `this`, no cycle.
+        @Suppress("unused")
+        private val cleanable: Cleaner.Cleanable? =
+            ptr?.let { p ->
+                REFCLEANER.register(this, LightUserDataAction(p))
+            }
+
         override fun toString(): kotlin.String = "lightuserdata(${ptr?.toString(16) ?: "0x0"})"
+
+        private class LightUserDataAction(private val ptr: Long) : Runnable {
+            override fun run() {
+                try {
+                    StaticRefs.dispose(ptr)
+                } catch (_: Throwable) {
+                    // Best-effort; engine.close() would tear the whole Lua
+                    // state down anyway.
+                }
+            }
+        }
     }
 
     actual class Number actual constructor(actual val value: Double) : LuaValue {
