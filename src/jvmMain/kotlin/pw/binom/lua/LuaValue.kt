@@ -30,7 +30,7 @@ actual sealed interface LuaValue {
         @Suppress("unused")
         private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
             this,
-            UserDataAction(ll.state, refId),
+            RefAction(ll, refId),
         )
 
         val ptr: Long?
@@ -68,14 +68,21 @@ actual sealed interface LuaValue {
         }
 
         // Cleaner action: invoked when this UserData becomes phantom-reachable.
-        // The action captures only (statePtr, refId) — NOT `this` — to avoid
-        // creating a strong reference cycle that would prevent the userdata
-        // from ever becoming phantom-reachable in the first place.
+        // The action captures only the (context, refId) pair — NOT `this` —
+        // to avoid creating a strong reference cycle that would prevent the
+        // userdata from ever becoming phantom-reachable in the first place.
+        // We resolve the state pointer at RUN time (via `ll.state`) rather
+        // than capturing the raw Long at construction: if the owning engine
+        // is closed before this wrapper is GC'd, `ll.state` becomes 0L and
+        // the action is a no-op — capturing the raw Long would leave the
+        // action pointing at freed native memory.
         private class UserDataAction(
-            private val statePtr: Long,
+            private val ll: LuaContext,
             private val refId: Int,
         ) : Runnable {
             override fun run() {
+                val statePtr = ll.state
+                if (statePtr == 0L) return
                 // Resolve the Lua userdata's memory address from the registry
                 // entry, then drop both the StaticRefs entry and the registry
                 // reference. The userdata becomes Lua-orphaned, so Lua's next
@@ -198,7 +205,7 @@ actual sealed interface LuaValue {
         @Suppress("unused")
         private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
             this,
-            RefAction(ll.state, refId),
+            RefAction(ll, refId),
         )
 
         actual override operator fun get(key: LuaValue): LuaValue {
@@ -293,7 +300,7 @@ actual sealed interface LuaValue {
         @Suppress("unused")
         private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
             this,
-            RefAction(ll.state, refId),
+            RefAction(ll, refId),
         )
 
         override fun toString(): kotlin.String = "function(${ptr.toString(16)})"
@@ -317,15 +324,20 @@ actual sealed interface LuaValue {
     /**
      * Shared Cleaner action for TableRef / FunctionRef: drops the
      * LUA_REGISTRYINDEX entry registered by `luaL_ref` once the Kotlin
-     * wrapper becomes phantom-reachable. State-pointer == 0L means the
-     * owning engine was already closed; the action becomes a no-op so it
-     * never touches freed Lua memory.
+     * wrapper becomes phantom-reachable.
+     *
+     * We resolve the state pointer at RUN time (via `ll.state`) rather than
+     * capturing the raw Long at construction: if the owning engine is closed
+     * before this wrapper is GC'd, `ll.state` becomes 0L and the action is
+     * a no-op — capturing the raw Long would leave the action pointing at
+     * freed native memory.
      */
     private class RefAction(
-        private val statePtr: Long,
+        private val ll: LuaContext,
         private val refId: Int,
     ) : Runnable {
         override fun run() {
+            val statePtr = ll.state
             if (statePtr == 0L) return
             LuaNative.unref(statePtr, LUA_REGISTRYINDEX, refId)
         }

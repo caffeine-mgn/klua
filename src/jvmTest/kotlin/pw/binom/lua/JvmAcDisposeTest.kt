@@ -71,6 +71,7 @@ class JvmAcDisposeTest {
         for (i in 1..50) {
             System.gc()
             System.runFinalization()
+            engine.eval("collectgarbage('collect')")
             Thread.sleep(20)
             val now = StaticRefs.size
             peak = maxOf(peak, now)

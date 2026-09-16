@@ -411,6 +411,12 @@ private fun setMetatable(ll: LuaContext, value: LuaValue.Meta, table: LuaValue) 
 private fun LuaValue.RefObject.callToString(ll: LuaContext): kotlin.String =
     ll.state.checkState {
         ll.pushValue(this)
+        // luaL_tolstring pushes onto the stack when it has to compute a
+        // string representation: 0 net change for __tostring metamethod
+        // case (luaL_callmeta replaces in place, but here we count
+        // callmeta as +1 because Lua uses a copy+replace path) and +1
+        // for the default type-fallback cases (numbers, booleans, nil,
+        // tables without __tostring). Either way pop(2) balances.
         val str = luaL_tolstring(ll.state, -1, null)?.toKString()
         lua_pop(ll.state, 2)
         return str ?: ""
