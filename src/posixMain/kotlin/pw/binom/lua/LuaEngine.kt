@@ -150,14 +150,13 @@ actual class LuaEngine actual constructor() : AutoCloseable {
             ptr = CLOSURE_FUNCTION,
             upValues = listOf(
                 LuaValue.LightUserData(ref.asCPointer()),
-                LuaValue.LightUserData(contextPtr.asCPointer()),
             ),
         )
         val metatable = LuaValue.TableValue(
             "__call".lua to luaFunc,
             "__gc".lua to closureAutoGcFunction
         )
-        val userData = createUserData(LuaValue.LightUserData(ref.asCPointer()))
+        val userData = createUserData(LuaValue.LightUserData(AC_CLOSURE_PTR))
         userData.metatable = metatable
         return userData
     }

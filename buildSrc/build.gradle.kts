@@ -6,12 +6,12 @@ buildscript {
     }
 
     dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
     }
 }
 
 plugins {
-    kotlin("jvm") version "2.0.21"
+    kotlin("jvm") version "2.4.20"
 }
 
 repositories {
@@ -22,10 +22,9 @@ repositories {
 }
 
 dependencies {
-    api("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
-    api("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
+    api("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
+    api("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
     api("org.jetbrains.dokka:dokka-gradle-plugin:1.9.20")
-    api("pw.binom:kn-clang:0.1.17")
-    api("io.vertx:vertx-web:4.2.1")
     api("pw.binom:binom-publish:0.1.23")
+    api("io.vertx:vertx-web:4.2.1")
 }

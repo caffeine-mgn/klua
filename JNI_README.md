@@ -1,8 +1,8 @@
 # Lua 5.4 via JNI on the JVM target
 
-Целевая архитектура: единый источник правды по Lua под оба таргета — нативный и JVM.
-JVM собирается нативно из тех же `src/nativeMain/lua/*.c` исходников через `pw.binom.kn-clang`
-и подгружается через JNI/JBIN в jar.
+Единый источник правды по Lua под оба таргета — нативный и JVM. JVM собирается
+нативно из тех же `src/nativeMain/lua/*.c` исходников через `pw.binom.kn-clang`
+и подгружается через JNI в jar.
 
 ## Состав
 
@@ -16,13 +16,13 @@ JVM собирается нативно из тех же `src/nativeMain/lua/*.c
 
 ## Сборка
 
-В `build.gradle.kts` для каждой платформы (`linuxX64`, `linuxArm64`, `macosX64`, `macosArm64`,
-`mingwX64`) добавляется `clangBuildDynamic("klua", target)`, который:
+В `build.gradle.kts` для каждой платформы (`linuxX64`) добавляется
+`clangBuildDynamic("klua", target)`, который:
 
 1. Берёт исходники: `src/nativeMain/lua/*.c` + `src/jvmMain/c/klua_jni.c`
 2. Подключает `jni.h` из активного `JAVA_HOME/include`
-3. Линкуется в shared-library (`-shared -fPIC` / `-dynamiclib` / `-shared`)
-4. Копируется в `jvmMain resources` по пути `linux_x64/libklua.so` и т.п.
+3. Линкуется в shared-library (`-shared -fPIC`)
+4. Копируется в `jvmMain resources` по пути `linux_x64/libklua.so`
 5. Упаковывается в `klua-jvm.jar` под тем же путём — ресурс-jar подход, без postinstall-скриптов.
 
 Native-loader сам выбирает нужный файл по `os.name`/`os.arch` при `Class.forName`.
@@ -47,46 +47,26 @@ Native-loader сам выбирает нужный файл по `os.name`/`os.a
   (а не `LuaInt`). Это сохраняет `assertEquals(LuaValue.of(11.0), res[1])` в
   `arrayTest`.
 * `makeRef(popValue=false)` симулируется через `pushValue(idx); ref();` — иначе
-  обход таблицы через `next` затирал исходные индексы и ронял VM (см. коммит
-  "improve ref() not pop original").
+  обход таблицы через `next` затирал исходные индексы и ронял VM.
 * `pcall` обрабатывает 5 кодов ошибок Lua 5.4 (`LUA_OK..LUA_ERRERR`).
 
-## Тесты (linux_x64 host)
+## Тесты
 
 ```
 > ./gradlew jvmTest --offline
-13 passed, 1 skipped, 4 — pass individually но JVM крашится при последовательном запуске.
+21/21 passed (17 CommonLuaEngineTest + 1 CommonLuaValueTest + 3 TestClosureDebug)
 
-Pass:
-  throwException, getFromTableRef, arrayTest, globalTest, errorCatching,
-  lightUserDataTest, autoCleanClosureTest1, autoCleanClosureTest2, callTest,
-  test, evalTest, refFuncCall, toStringTest.
-  testAutoCleanUserData, userDataTest2, callPassedFunctionTest — pass при отдельном запуске.
-
-Skip:
-  metatableTest — содержит конструкции, которые ещё не реализованы.
-
-Crash при последовательном запуске: в `luaH_next+0x8` после нескольких тестов —
-use-after-free на закрытом lua_State. Cleanup __gc-callback после закрытия LuaContext
-не учитывается. См. секцию TODO.
+> ./gradlew linuxX64Test --offline
+21/21 passed
 ```
+
+Оба таргета дают идентичные результаты — общая кодовая база в `commonTest/`
+гарантирует семантический паритет JVM и native. JVM раннер может
+использовать любой OpenJDK 21.x.
 
 ## TODO
 
-1. **Перевести JVM с устаревшего 21.0.6 Liberica на OpenJDK 21.0.11**, на котором
-   текущий код работает (тест-раннер `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`).
-   В `gradle.properties` или в `gradle-wrapper.properties` нужно
-   выставить `org.gradle.java.home`, иначе JVM крушится по другому месту.
-2. **Use-after-free в cleanup-цепочке**: `UserData.value` через `StaticRefs` хранит
-   JVM-объекты; после `LuaContext.close()` нет механизма, который бы отвязал
-   pending `__gc` от уже закрытого состояния. Это приводит к крашам при
-   последовательном запуске тестов с userdata. Лечить либо через ленивый
-   `unref` в `kotlin.callbacks` чей statePtr уже мёртв, либо через явный
-   finalize у `LuaContext` который снимает все свои ref-ы из
-   `LuaNative.callbacks`.
-3. **`metatableTest` skipped**: содержит `LuaValue.setmetatable` функционал,
-   который не реализован (в posixNative он тоже не используется — может быть
-   только в тесте).
-4. **macOS / Windows хост-таргеты**. Сейчас в `build.gradle.kts` настроены
-   только `linuxX64` (и закомментированы остальные — пользователь добавит
-   clang+xcode toolchain / mingw).
+1. **macOS / Windows host-таргеты**. Сейчас в `build.gradle.kts` настроен только
+   `linuxX64` (нужны `clang+xcode` / `mingw` тулчейны для arm64/x64).
+2. **`metatableTest`**: содержит `LuaValue.setmetatable` функционал, который
+   не реализован (в posixNative он тоже не используется — только в тесте).

@@ -1,19 +1,19 @@
-import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
-import pw.binom.BuildBinaryWasm32
 import pw.binom.kotlin.clang.addStatic
+import pw.binom.kotlin.clang.clangBuildDynamic
 import pw.binom.kotlin.clang.clangBuildStatic
 import pw.binom.kotlin.clang.compileTaskName
 import pw.binom.kotlin.clang.eachNative
-import pw.binom.plugins.HttpServerTask
 import pw.binom.publish.allTargets
 import pw.binom.publish.binom
 import pw.binom.publish.dependsOn
 import pw.binom.publish.ifNotMac
 import pw.binom.publish.plugins.*
+import org.jetbrains.kotlin.konan.target.KonanTarget
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("maven-publish")
+    id("pw.binom.kn-clang") version "0.0.5"
 }
 
 allprojects {
@@ -28,7 +28,15 @@ allprojects {
 }
 
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
+val JNI_SOURCES_DIR = file("${buildFile.parentFile}/src/jvmMain/c")
 val jsRun = System.getProperty("jsrun") != null
+
+tasks.withType<Test>().configureEach {
+    testLogging {
+        showStandardStreams = true
+        events("started", "passed", "failed", "skipped", "standardOut", "standardError")
+    }
+}
 kotlin {
     jvm()
     linuxX64()
@@ -97,7 +105,7 @@ kotlin {
 
     eachNative {
         val buildLuaTask = clangBuildStatic(target = konanTarget, name = "lua") {
-            konanVersion.set("2.0.21")
+            konanVersion.set("2.4.20")
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
             compileDir(
                 sourceDir = LUA_SOURCES_DIR,
@@ -116,6 +124,81 @@ kotlin {
                 }
             }
         }
+    }
+
+    /*
+     * Build Lua 5.4 + klua_jni.c as a dynamic library for each JVM host via clangBuildDynamic.
+     * Output naming: build/native/klua/<target>/dynamic/libklua.{so,dylib,dll}.
+     *
+     * For now we only register tasks for the host running Gradle: cross-platform fat-jar
+     * bundles (containing libs for Linux/macOS/Windows at once) require per-target JDK
+     * headers which aren't usually available on the build host.
+     */
+    val currentHost = org.jetbrains.kotlin.konan.target.HostManager.host
+    val jvmHostTargets = listOfNotNull(
+        when (currentHost) {
+            org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_X64,
+            org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_ARM64 -> currentHost
+            org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_X64,
+            org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_ARM64 -> currentHost
+            org.jetbrains.kotlin.konan.target.KonanTarget.MINGW_X64 -> currentHost
+            else -> null
+        }
+    )
+    val jvmBuildTasks = jvmHostTargets.associateWith { target ->
+        // Platform-specific JNI include: JAVA_HOME/include/<linux|darwin|win32>
+        val platform = when (target.family) {
+            org.jetbrains.kotlin.konan.target.Family.LINUX,
+            org.jetbrains.kotlin.konan.target.Family.ANDROID -> "linux"
+            org.jetbrains.kotlin.konan.target.Family.OSX -> "darwin"
+            org.jetbrains.kotlin.konan.target.Family.MINGW -> "win32"
+            else -> "linux"
+        }
+        val jdkHome = System.getenv("JAVA_HOME")
+        val jdkIncludeCandidates = listOfNotNull(
+            jdkHome?.let { "$it/include" },
+            "/usr/lib/jvm/java-21-openjdk/include",
+            "/usr/lib/jvm/default-java/include",
+        )
+        val jdkInclude = jdkIncludeCandidates.firstOrNull { File(it).exists() } ?: ""
+        val jdkIncludePlatformCandidates = listOfNotNull(
+            jdkHome?.let { "$it/include/$platform" },
+            "/usr/lib/jvm/java-21-openjdk/include/$platform",
+            "/usr/lib/jvm/default-java/include/$platform",
+        )
+        val jdkIncludePlatform = jdkIncludePlatformCandidates.firstOrNull { File(it).exists() } ?: ""
+        clangBuildDynamic(target = target, name = "klua") {
+            konanVersion.set("2.4.20")
+            compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3", "-fno-rtti")
+            include(LUA_SOURCES_DIR)
+            if (jdkInclude.isNotEmpty()) include(File(jdkInclude))
+            if (jdkIncludePlatform.isNotEmpty()) include(File(jdkIncludePlatform))
+            compileDir(sourceDir = LUA_SOURCES_DIR)
+            compileDir(sourceDir = JNI_SOURCES_DIR)
+        }
+    }
+    val jvmCopyTasks = jvmBuildTasks.mapValues { (target, buildTask) ->
+        val libExt = when (target.family) {
+            org.jetbrains.kotlin.konan.target.Family.MINGW -> "dll"
+            org.jetbrains.kotlin.konan.target.Family.OSX,
+            org.jetbrains.kotlin.konan.target.Family.IOS,
+            org.jetbrains.kotlin.konan.target.Family.TVOS,
+            org.jetbrains.kotlin.konan.target.Family.WATCHOS -> "dylib"
+            else -> "so"
+        }
+        // clangBuildDynamic outputs to "klua.<ext>" (no "lib" prefix). We also produce a
+        // "libklua.<ext>" copy so platforms that prefer soname-style naming are happy;
+        // NativeLoader picks the right one based on the host.
+        val srcFileName = "klua.$libExt"
+        val libFileName = "libklua.$libExt"
+        val outDir = layout.buildDirectory.dir("processed-resources/native/${target.name}").get().asFile
+        val copyTask = tasks.register("copyKluaNativeLib${target.name}", Copy::class.java) {
+            from(buildTask.dynamicFile)
+            rename { libFileName }
+            into(outDir)
+            outputs.upToDateWhen { true }
+        }
+        copyTask to srcFileName
     }
 
     sourceSets {
@@ -167,8 +250,14 @@ kotlin {
         val jvmMain by getting {
             dependencies {
                 api("org.jetbrains.kotlin:kotlin-stdlib:${pw.binom.Versions.KOTLIN_VERSION}")
-                api("org.luaj:luaj-jse:3.0.1")
+                // luaj-jse removed; Lua is now provided by the bundled native library
+                // built from the same Lua 5.4 sources used by Kotlin/Native targets.
             }
+        }
+        tasks.named("jvmProcessResources", Copy::class.java).configure {
+            dependsOn(jvmCopyTasks.values.map { it.first })
+            from(layout.buildDirectory.dir("processed-resources/native"))
+            include("**/*.so", "**/*.dylib", "**/*.dll")
         }
 
         val jvmTest by getting {
@@ -186,104 +275,8 @@ kotlin {
 //    )
 // }
 
-tasks {
-    if (pw.binom.Config.JS_TARGET_SUPPORT) {
-        val linkTask = register("linkBinaryLuaWasm32", BuildBinaryWasm32::class.java)
-        val linkTask1 = register("linkBinaryLuaWasm32SingleFile", BuildBinaryWasm32::class.java)
-        linkTask.configure {
-            this.output.set(buildDir.resolve("native/lua/wasm32/binary/lua_native.js"))
-        }
-        linkTask1.configure {
-            this.output.set(buildDir.resolve("native/lua/wasm32/binary/lua_native_single.js"))
-            this.customArgs.add("-s")
-            this.customArgs.add("SINGLE_FILE=1")
-        }
-        listOf(linkTask, linkTask1).forEach {
-            it.run {
-                configure {
-                    fun strConfig(name: String, value: String) {
-                        this.customArgs.add("-s")
-                        this.customArgs.add("$name=$value")
-                    }
-
-                    val tmpFile = File.createTempFile("postjs", "js")
-                    val KLUA_CPP_SOURCES_DIR = file("src/nativeMain/klua")
-                    fun strConfig(name: String, value: Int) = strConfig(name = name, value = value.toString())
-                    group = "build"
-                    cppFiles.from(fileTree(LUA_SOURCES_DIR).filter { it.extension != "h" && it.extension != "hpp" && it.name != "luac.c" })
-                    cppFiles.from(fileTree(KLUA_CPP_SOURCES_DIR))
-                    this.customArgs.add("-DLUA_COMPAT_5_3")
-                    this.customArgs.add("-DLUA_BUILD_AS_DLL")
-                    this.customArgs.add("-g0")
-                    this.customArgs.add("-O0")
-                    this.customArgs.add("-fno-rtti")
-                    this.customArgs.add("--post-js")
-                    this.customArgs.add(tmpFile.absolutePath)
-                    strConfig("INVOKE_RUN", "0")
-                    strConfig("EXPORT_NAME", "LuaNative")
-                    strConfig("MODULARIZE", 1)
-                    strConfig("NO_FILESYSTEM", 1)
-                    strConfig("ABORTING_MALLOC", 0)
-                    strConfig("ALLOW_TABLE_GROWTH", 1)
-                    strConfig("ERROR_ON_UNDEFINED_SYMBOLS", 0)
-                    strConfig("SUPPORT_ERRNO", 0)
-                    strConfig("ALLOW_MEMORY_GROWTH", 1)
-                    strConfig("SAFE_HEAP", 0)
-                    strConfig("JS_MATH", 1)
-                    strConfig("ASSERTIONS", 0)
-                    strConfig("FETCH_SUPPORT_INDEXEDDB", 0)
-                    strConfig("FETCH", 0)
-                    this.customArgs.add("-flto") // Enables link-time optimizations (LTO).
-
-                    doFirst {
-                        tmpFile.writeText("Module['addFunction']=addFunction;Module['removeFunction']=removeFunction;")
-                    }
-                    doLast {
-                        tmpFile.delete()
-                    }
-                }
-            }
-        }
-
-        if (jsRun) {
-            val jsTestClasses by getting {
-//        dependsOn(generateWasmTestingSource)
-            }
-
-            val jsProcessResources by getting {
-//            dependsOn(linkTask)
-            }
-
-            val jsTest by getting {
-//        dependsOn(appendTestData)
-                onlyIf { false }
-            }
-
-            val jsBrowserDevelopmentRun by getting(KotlinWebpack::class) {
-                this.devServer?.open = false
-            }
-        }
-
-        val testingServer by creating(HttpServerTask::class.java) {
-            root(linkTask.get().output.get().parentFile)
-            port(8093)
-            dependsOn(linkTask)
-            dependsOn(linkTask1)
-        }
-        if (jsRun) {
-            val jsBrowserTest by getting {
-                testingServer.runDuringTask(this)
-            }
-        } else {
-            val jsLegacyBrowserTest by getting {
-                testingServer.runDuringTask(this)
-            }
-            val jsIrBrowserTest by getting {
-                testingServer.runDuringTask(this)
-            }
-        }
-    }
-}
+// JS / WASM build pipeline disabled (Config.JS_TARGET_SUPPORT = false).
+// Original implementation removed; see git history if you need to revive it.
 apply<pw.binom.publish.plugins.PrepareProject>()
 
 extensions.getByType(pw.binom.publish.plugins.PublicationPomInfoExtension::class).apply {
