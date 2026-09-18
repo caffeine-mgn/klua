@@ -65,6 +65,28 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6;
 }
 
+/*
+ * Symmetric counterpart to JNI_OnLoad: drop the cached GlobalRefs so a
+ * classloader reload does not leak two refs per load (relevant when klua is
+ * loaded by multiple classloaders, e.g. in hot-reload dev tooling or
+ * isolation-classloader containers).
+ */
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
+    (void)reserved;
+    JNIEnv* env = NULL;
+    if ((*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        return;
+    }
+    if (stringClass != NULL) {
+        (*env)->DeleteGlobalRef(env, stringClass);
+        stringClass = NULL;
+    }
+    if (luaNativeClass != NULL) {
+        (*env)->DeleteGlobalRef(env, luaNativeClass);
+        luaNativeClass = NULL;
+    }
+}
+
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_init(JNIEnv* env, jclass cls) {
     /* Method IDs are already cached by JNI_OnLoad. init() exists only as a
      * trigger to ensure the .so is loaded; nothing to do here. */

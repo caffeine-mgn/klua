@@ -7,10 +7,28 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.asStableRef
 
+/**
+ * Identity wrapper used by [ObjectContainer.add]'s reverse map. Kotlin/Native
+ * doesn't ship an [IdentityHashMap] in the multiplatform stdlib and
+ * `kotlin.experimental.identityHashCode` is not available either, so we
+ * rely on `===` (which always checks identity on Kotlin/Native new MM)
+ * for equality and use the wrapped value's regular hashCode() for
+ * distribution. Collisions are harmless because equals is identity-based —
+ * worst case the HashMap probe linearizes for two equal-hashCode objects.
+ */
+private class IdentityKey<T : Any>(val value: T) {
+    override fun hashCode(): Int = value.hashCode()
+    override fun equals(other: Any?): Boolean = other is IdentityKey<*> && other.value === value
+}
+
 @OptIn(ExperimentalForeignApi::class)
 actual class ObjectContainer actual constructor() {
     private val ptrToObj = HashMap<COpaquePointer, Any>()
-    private val objToPtr = HashMap<Any, COpaquePointer>()
+    // Identity-keyed map: two distinct objects that compare equal via
+    // data-class `equals` (e.g. String("x"), Pair(a,b), arrays) get
+    // distinct StableRef slots. Without this, `remove(one)` would dispose
+    // the shared slot for the second instance as well.
+    private val objToPtr = HashMap<IdentityKey<Any>, COpaquePointer>()
 
     actual fun makeClosure(func: LuaFunction): LuaValue.FunctionValue =
         LuaValue.FunctionValue(ptr = CLOSURE_FUNCTION, upValues = listOf(add(func)))
@@ -19,18 +37,22 @@ actual class ObjectContainer actual constructor() {
         if (data == null) {
             return LuaValue.LightUserData(null)
         }
-        val exist = objToPtr[data]
+        @Suppress("UNCHECKED_CAST")
+        val key = IdentityKey(data) as IdentityKey<Any>
+        val exist = objToPtr[key]
         if (exist != null) {
             return LuaValue.LightUserData(exist)
         }
         val dataStableRef = StableRef.create(data)
         ptrToObj[dataStableRef.asCPointer()] = data
-        objToPtr[data] = dataStableRef.asCPointer()
+        objToPtr[key] = dataStableRef.asCPointer()
         return LuaValue.LightUserData(dataStableRef.asCPointer())
     }
 
     actual fun remove(data: Any): Boolean {
-        val ptr = objToPtr.remove(data) ?: return false
+        @Suppress("UNCHECKED_CAST")
+        val key = IdentityKey(data) as IdentityKey<Any>
+        val ptr = objToPtr.remove(key) ?: return false
         ptrToObj.remove(ptr)
         ptr.asStableRef<Any>().dispose()
         return true

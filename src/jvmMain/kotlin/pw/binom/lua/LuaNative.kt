@@ -132,10 +132,19 @@ internal object LuaNative {
             val nresults = results.size
             results.forEach { ctx.push(it) }
             nresults.toLong()
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
+            // User-thrown exceptions: surface as Lua errors so Lua's pcall
+            // can observe them. Fatal JVM errors (VirtualMachineError /
+            // ThreadDeath) bypass this catch and propagate to the JVM —
+            // masking OOM/SOE behind a pcall-able sentinel would let host
+            // code swallow unrecoverable failures.
             lastError = e
             (1L shl 31) or 0
         }
+        // VirtualMachineError (OutOfMemoryError, StackOverflowError, ...)
+        // and ThreadDeath propagate to the JVM as required by the JVM
+        // specification — they are not regular Exceptions and must not be
+        // converted to Lua-pcall-able errors.
     }
 
     /**
@@ -170,18 +179,10 @@ internal fun interface LuaCallbackBridge {
     fun invoke(ctx: LuaContext): List<LuaValue>
 }
 
-private object LuaNativeType {
-    const val NONE = -1
-    const val NIL = 0
-    const val BOOLEAN = 1
-    const val LIGHTUSERDATA = 2
-    const val NUMBER = 3
-    const val STRING = 4
-    const val TABLE = 5
-    const val FUNCTION = 6
-    const val USERDATA = 7
-    const val THREAD = 8
-}
+// LuaNativeType constants moved to commonMain `pw.binom.lua.LuaType` (see
+// LuaStatus.kt). The JVM-side [LuaContext.readValueAt] uses those common
+// constants now; the previous private object here was dead residue that
+// misled readers into thinking the type dispatch was enforced.
 
 internal const val LUA_REGISTRYINDEX = (-1001000)
 

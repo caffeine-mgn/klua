@@ -228,7 +228,27 @@ actual class LuaEngine : AutoCloseable {
 
     companion object {
         private const val PTR_SIZE = 8
+
+        /**
+         * Creates a [LuaEngine] with opt-in safe-mode standard library.
+         * When [safeMode] is `true`, only `base`/`string`/`table`/`math`/
+         * `utf8` are loaded — `os`, `io`, `package`, `debug`, `coroutine`
+         * stay sealed, so untrusted Lua cannot spawn processes, open
+         * files, dlopen shared libraries, or introspect runtime internals.
+         *
+         * `safeMode = false` (default) keeps the historical full
+         * `luaL_openlibs` behaviour via the zero-arg primary constructor.
+         */
+        // fun create(safeMode: Boolean): LuaEngine = LuaEngine(safeMode = safeMode)
     }
+
+    // NOTE: A safeMode entry point (open only base/string/table/math/utf8)
+    // would belong here as a secondary constructor, but Kotlin Multiplatform
+    // prohibits secondary constructors in actual classes that don't match
+    // an expect-side constructor. Adding it requires a breaking change to
+    // the expect class (primary constructor with safeMode parameter) OR a
+    // separate LuaEngineSafeMode subclass. Tracked in
+    // CODE_REVIEW_FINDINGS.md as E2 deferred.
 }
 
 internal fun pcallProcessing(ll: LuaContext, exeCode: Int): List<LuaValue> {

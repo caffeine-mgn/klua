@@ -99,22 +99,25 @@ actual class LuaEngine actual constructor() : AutoCloseable {
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
         ll.state.checkState {
-            try {
-                ll.pushValue(value)
-                val ptr = lua_topointer(ll.state, -1)!!
-                val ref = ll.state.makeRef(popValue = true)
-                return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
-            } catch (e: Throwable) {
-                e.printStackTrace()
-                throw e
-            }
+            ll.pushValue(value)
+            // lua_topointer returns null for values without a GC object
+            // (booleans, nil, numbers, lightuserdata); throw a typed
+            // exception instead of NPE so callers can react to the
+            // "not a Lua object" condition explicitly.
+            val ptr = lua_topointer(ll.state, -1)
+                ?: throw LuaException("Cannot makeRef of value with no GC pointer")
+            val ref = ll.state.makeRef(popValue = true)
+            return LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
         }
     }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
         ll.state.checkState {
             ll.pushValue(value)
-            val ptr = lua_topointer(ll.state, -1)!!
+            // See [makeRef(FunctionValue)] — throw a typed exception
+            // instead of NPE on values without a GC pointer.
+            val ptr = lua_topointer(ll.state, -1)
+                ?: throw LuaException("Cannot makeRef of value with no GC pointer")
             val ref = ll.state.makeRef(popValue = true)
             return LuaValue.TableRef(ref = ref, ptr = ptr, ll = ll)
         }

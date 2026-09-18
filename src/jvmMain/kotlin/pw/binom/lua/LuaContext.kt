@@ -1,5 +1,7 @@
 package pw.binom.lua
 
+import java.util.concurrent.ConcurrentHashMap
+
 internal class LuaContext {
     // Mutable because [close] nullifies it after [LuaNative.close] so that
     // Cleaner actions registered from TableRef/FunctionRef/UserData wrappers
@@ -22,13 +24,49 @@ internal class LuaContext {
      * LuaContext-shaped value to call without going through the full
      * constructor — the state is owned by another LuaContext (the engine's).
      *
-     * This wrapper does **not** allocate a Lua state and does **not** register
-     * itself anywhere, but it does behave like a regular LuaContext for the
-     * duration of the call: `state`, `push`, `readValue` all work against the
-     * wrapped pointer. It must not escape the callback scope.
+     * Each call to [wrap] registers the wrapper in [wrappersByState] keyed
+     * by the engine's state pointer so that when the owning engine calls
+     * [close] we can null out `statePtr` on every live wrapper. Without
+     * this, a callback-returned TableRef/FunctionRef/UserData that
+     * outlives `engine.close()` would still hold the wrapper's `statePtr`
+     * and its Cleaner would later call `LuaNative.unref(<freed pointer>, …)`
+     * — a use-after-free.
+     *
+     * A Cleaner also drops the wrapper from the map when it becomes
+     * phantom-reachable (i.e. the wrapper itself was GC'd) so the map
+     * doesn't grow unboundedly across many short-lived callbacks.
      */
     companion object {
-        internal fun wrap(statePtr: Long): LuaContext = LuaContext(statePtr)
+        private val wrappersByState = ConcurrentHashMap<Long, MutableList<LuaContext>>()
+
+        internal fun wrap(statePtr: Long): LuaContext {
+            val ctx = LuaContext(statePtr)
+            wrappersByState
+                .computeIfAbsent(statePtr) { mutableListOf() }
+                .add(ctx)
+            // When the wrapper itself becomes phantom-reachable, remove it
+            // from the map so we don't accumulate dead entries.
+            LuaValue.REFCLEANER.register(ctx, WrapperCleanup(statePtr, ctx))
+            return ctx
+        }
+
+        private fun clearWrappersFor(statePtr: Long) {
+            wrappersByState.remove(statePtr)?.forEach { wrapper ->
+                wrapper.statePtr = 0L
+            }
+        }
+
+        private class WrapperCleanup(
+            private val statePtr: Long,
+            private val wrapper: LuaContext,
+        ) : Runnable {
+            override fun run() {
+                wrappersByState[statePtr]?.remove(wrapper)
+                if (wrappersByState[statePtr]?.isEmpty() == true) {
+                    wrappersByState.remove(statePtr)
+                }
+            }
+        }
     }
 
     val state: Long
@@ -45,12 +83,12 @@ internal class LuaContext {
 
     private fun readValueAt(index: Int, ref: Boolean): LuaValue {
         return when (LuaNative.type(statePtr, index)) {
-            -1, 0 -> LuaValue.Nil
-            1 -> LuaValue.Boolean(LuaNative.toBoolean(statePtr, index))
-            2 -> LuaValue.LightUserData(LuaNative.toUserdata(statePtr, index))
-            3 -> LuaValue.Number(LuaNative.toNumber(statePtr, index))
-            4 -> LuaValue.String(LuaNative.toString(statePtr, index) ?: "")
-            5 -> {
+            LuaType.NONE, LuaType.NIL -> LuaValue.Nil
+            LuaType.BOOLEAN -> LuaValue.Boolean(LuaNative.toBoolean(statePtr, index))
+            LuaType.LIGHTUSERDATA -> LuaValue.LightUserData(LuaNative.toUserdata(statePtr, index))
+            LuaType.NUMBER -> LuaValue.Number(LuaNative.toNumber(statePtr, index))
+            LuaType.STRING -> LuaValue.String(LuaNative.toString(statePtr, index) ?: "")
+            LuaType.TABLE -> {
                 if (ref) {
                     // Mirror posixNative's makeRef(popValue=false): duplicate the value to the
                     // top so that the ref() pop does not consume the value at the original index.
@@ -89,7 +127,7 @@ internal class LuaContext {
                     }
                 }
             }
-            6 -> {
+            LuaType.FUNCTION -> {
                 if (ref) {
                     LuaNative.pushValue(statePtr, index)
                     val refId = LuaNative.ref(statePtr, LUA_REGISTRYINDEX)
@@ -99,12 +137,12 @@ internal class LuaContext {
                     LuaValue.FunctionValue(0)
                 }
             }
-            7 -> {
+            LuaType.USERDATA -> {
                 LuaNative.pushValue(statePtr, index)
                 val refId = LuaNative.ref(statePtr, LUA_REGISTRYINDEX)
                 LuaValue.UserData(refId, this)
             }
-            else -> throw RuntimeException("Unknown lua type")
+            else -> throw RuntimeException("Unknown lua type: ${LuaNative.type(statePtr, index)}")
         }
     }
 
@@ -113,8 +151,12 @@ internal class LuaContext {
         if (current != 0L) {
             LuaNative.close(current)
             // Null out so Cleaner actions registered by Kotlin-side wrappers
-            // become no-ops rather than touching freed memory.
+            // become no-ops rather than touching freed memory. Also null
+            // out statePtr on every wrapper registered for this engine
+            // (see [wrap]) so any callback-returned LuaValue held past
+            // engine.close() cannot dereference the freed native state.
             statePtr = 0L
+            clearWrappersFor(current)
         }
     }
 }

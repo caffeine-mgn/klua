@@ -26,17 +26,26 @@ internal object StaticRefs {
         synchronized(map) { map.remove(key) }
     }
 
-    fun removeIfMatches(value: Any?): Boolean {
+    /**
+     * Removes every entry whose stored value is identity-equal to [value].
+     * Returns the number of entries removed. The single-thread implementation
+     * short-circuited after the first match, leaving N-1 entries stranded
+     * after `add(obj)` x N; with the concurrent-engine case this becomes
+     * an unbounded leak because each entry is only freed when its
+     * LightUserData wrapper is itself GC'd.
+     */
+    fun removeIfMatches(value: Any?): Int {
         synchronized(map) {
+            var count = 0
             val it = map.entries.iterator()
             while (it.hasNext()) {
                 if (it.next().value === value) {
                     it.remove()
-                    return true
+                    count++
                 }
             }
+            return count
         }
-        return false
     }
 
     /** JVM-test hook: number of live AC/static-ref entries. */

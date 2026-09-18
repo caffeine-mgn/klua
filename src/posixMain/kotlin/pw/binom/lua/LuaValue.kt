@@ -65,7 +65,21 @@ actual sealed interface LuaValue {
 
     @OptIn(ExperimentalForeignApi::class)
     actual class LightUserData(var lightPtr: COpaquePointer?) : Data {
+        /**
+         * Public factory from a Kotlin value. The pointer-based primary
+         * constructor is now `internal` so that arbitrary host code cannot
+         * construct a `LightUserData` around an arbitrary `COpaquePointer`
+         * and then read `.value` — `toKotlinObject()` would treat that
+         * arbitrary address as a `StableRef` header and dereference it,
+         * which is a type-confusion / arbitrary-heap-read primitive.
+         *
+         * Anything inside klua that legitimately needs to wrap a raw
+         * pointer (e.g. `pushValue` writing an existing lightuserdata
+         * to the stack) uses the internal constructor directly.
+         */
         actual constructor(value: Any?) : this(value?.let { StableRef.create(it).asCPointer() })
+
+        internal constructor(lightPtr: COpaquePointer) : this(lightPtr as COpaquePointer?)
 
         actual override val value: Any?
             get() = lightPtr.toKotlinObject()

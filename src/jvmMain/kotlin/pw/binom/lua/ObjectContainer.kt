@@ -46,7 +46,7 @@ actual class ObjectContainer actual constructor() {
 
     actual fun get(data: LuaValue.LightUserData): Any? = StaticRefs.get(data.ptr)
 
-    actual fun remove(data: Any): Boolean = StaticRefs.removeIfMatches(data)
+    actual fun remove(data: Any): Boolean = StaticRefs.removeIfMatches(data) > 0
 
     actual fun getClosure(func: LuaValue.FunctionValue): LuaFunction? =
         closures[func.callbackId]
