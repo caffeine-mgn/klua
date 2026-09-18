@@ -143,7 +143,7 @@ actual class LuaEngine : AutoCloseable {
         if (value.ptr != null) StaticRefs.dispose(value.ptr)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         val ud = LuaValue.UserData(refId, ll)
-        ud.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
+        ud.metatable = luaTableOf("__gc" to userdataAutoGcFunction)
         return ud
     }
 
@@ -157,7 +157,7 @@ actual class LuaEngine : AutoCloseable {
         StaticRefs.store(mem, value)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
         val ud = LuaValue.UserData(refId, ll)
-        ud.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
+        ud.metatable = luaTableOf("__gc" to userdataAutoGcFunction)
         return ud
     }
 
@@ -194,32 +194,26 @@ actual class LuaEngine : AutoCloseable {
             ptr = gcPtr,
             ll = ll,
         )
-        val metatable = LuaValue.TableValue(
-            "__call".lua to fnRef,
-            "__gc".lua to gcFnRef,
+        val metatable = luaTableOf(
+            "__call" to fnRef,
+            "__gc" to gcFnRef,
         )
         ud.metatable = metatable
         return ud
     }
 
     actual fun setAC(userdata: LuaValue.UserData) {
-        // NOTE: the historical behaviour here was to use closureAutoGcFunction,
-        // which makes disposeCallback a no-op (the id was never registered with
-        // a LuaCallbackBridge). That is in fact a leak — the StaticRefs entry
-        // placed under the userdata's mem address would never be released.
-        // Switching to userdataAutoGcFunction (which invokes disposeUserdata ->
-        // StaticRefs.dispose) looked like the obvious fix, but exercising it
-        // through JvmAcDisposeTest.createUserDataFromLightUserDataDoesNotOrphanEntries
-        // exposed a double-dispose where the inner object passed through
-        // createUserData ends up being released twice (once via the explicit
-        // __gc path, once via the Cleaner). Investigation is queued; the fix
-        // needs a small refactor around ownership that does not regress this
-        // test. Keeping the historical implementation here for now.
+        // Set __gc to userdataAutoGcFunction so the StaticRefs entry under the
+        // userdata's mem address is released when Lua collects it. The
+        // previous closureAutoGcFunction pointed at a callback id that was
+        // never registered with a LuaCallbackBridge — disposeCallback was
+        // a no-op, and StaticRefs leaked the underlying Kotlin value for the
+        // lifetime of the engine.
         val table = userdata.metatable
         if (table is LuaValue.Table) {
-            table["__gc".lua] = closureAutoGcFunction
+            table["__gc".lua] = userdataAutoGcFunction
         } else {
-            userdata.metatable = LuaValue.TableValue("__gc".lua to closureAutoGcFunction)
+            userdata.metatable = luaTableOf("__gc" to userdataAutoGcFunction)
         }
     }
 

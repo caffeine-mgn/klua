@@ -141,7 +141,7 @@ actual class LuaEngine actual constructor() : AutoCloseable {
             // the underlying StableRef is disposed when Lua collects the
             // userdata. Previously this branch silently skipped the
             // metatable, leaking every AC userdata's payload.
-            ret.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
+            ret.metatable = luaTableOf("__gc" to userdataAutoGcFunction)
             return ret
         }
     }
@@ -193,7 +193,7 @@ actual class LuaEngine actual constructor() : AutoCloseable {
         if (table is LuaValue.Table) {
             table["__gc".lua] = closureAutoGcFunction
         } else {
-            userdata.metatable = LuaValue.TableValue("__gc".lua to closureAutoGcFunction)
+            userdata.metatable = luaTableOf("__gc" to closureAutoGcFunction)
         }
     }
 

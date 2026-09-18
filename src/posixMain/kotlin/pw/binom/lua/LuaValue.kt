@@ -378,32 +378,12 @@ actual sealed interface LuaValue {
         ): TableValue =
             TableValue(HashMap(table), metatable)
 
-        actual fun of(table: List<LuaValue>): TableValue {
-            val result = HashMap<LuaValue, LuaValue>()
-            table.forEachIndexed { index, luaValue ->
-                result[of(index.toLong() + 1)] = luaValue
-            }
-            return TableValue(result)
-        }
-
-        actual fun of(table: Array<LuaValue>): TableValue {
-            val result = HashMap<LuaValue, LuaValue>()
-            table.forEachIndexed { index, luaValue ->
-                result[of(index.toLong() + 1)] = luaValue
-            }
-            return TableValue(result)
-        }
-
+        actual fun of(table: List<LuaValue>): TableValue = sequenceToTable(table)
+        actual fun of(table: Array<LuaValue>): TableValue = sequenceToTable(table.asList())
         actual fun of(
             table: List<LuaValue>,
             metatable: LuaValue,
-        ): TableValue {
-            val result = HashMap<LuaValue, LuaValue>()
-            table.forEachIndexed { index, luaValue ->
-                result[of(index.toLong() + 1)] = luaValue
-            }
-            return TableValue(result, metatable = metatable)
-        }
+        ): TableValue = sequenceToTable(table, metatable)
     }
 }
 
