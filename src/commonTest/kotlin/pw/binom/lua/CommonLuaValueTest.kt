@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 class CommonLuaValueTest : AbstractTest() {
     @Test
     fun readTable() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         e["test"] = LuaValue.of(mapOf(1.0.lua to 2.0.lua))
         val table = e["test"]
         val m = table.checkedTable()
@@ -25,7 +25,7 @@ class CommonLuaValueTest : AbstractTest() {
      */
     @Test
     fun nilRoundTripTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         // Set a global to Nil and read it back from Lua side; expect Lua nil.
         e["x"] = LuaValue.Nil
         assertTrue(
@@ -45,14 +45,25 @@ class CommonLuaValueTest : AbstractTest() {
      */
     @Test
     fun integerRoundTripTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         e["x"] = LuaValue.of(42L)
-        // Lua-side type:
+        // Lua-side type: integer values preserve the integer subtype on
+        // the Lua side, so type(x) is "number" but lua_isinteger reports
+        // true. Since Round 6/E15 the readValueAt dispatch distinguishes
+        // them and returns LuaInt rather than Number.
         assertEquals("number", e.eval("return type(x)")[0].checkedString(),
             "LuaInt should look like a number from Lua side")
-        // Kotlin-side read:
-        assertEquals(42.0, e["x"].checkedNumber(),
-            "LuaInt round-trip should yield Number with the same value")
+        // Kotlin-side read: round-trip preserves integer-ness, so the
+        // returned value is a LuaInt with the original value.
+        val readX = e["x"] as LuaValue.LuaInt
+        assertEquals(42L, readX.value,
+            "LuaInt round-trip should yield LuaInt with the same value")
+        // Float-literal on Lua side comes back as Number — that's the
+        // discriminator that makes the readValueAt split correct.
+        e["y"] = LuaValue.of(3.14)
+        val readY = e["y"] as LuaValue.Number
+        assertEquals(3.14, readY.value,
+            "Float round-trip should yield Number")
     }
 
     /**
@@ -60,7 +71,7 @@ class CommonLuaValueTest : AbstractTest() {
      */
     @Test
     fun nestedTableRoundTripTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val nested = LuaValue.of(mapOf("inner".lua to "deep".lua))
         val outer = LuaValue.of(mapOf("n".lua to nested))
         e["root"] = outer
@@ -74,7 +85,7 @@ class CommonLuaValueTest : AbstractTest() {
      */
     @Test
     fun functionRefRoundTripTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         var calls = 0
         val fn = o.makeClosure {
@@ -97,7 +108,7 @@ class CommonLuaValueTest : AbstractTest() {
      */
     @Test
     fun booleanGetSetRoundTripTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         e["t"] = LuaValue.of(true)
         e["f"] = LuaValue.of(false)
         assertTrue(e["t"].checkedBoolean(), "Kotlin true should round-trip")

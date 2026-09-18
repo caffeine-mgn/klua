@@ -97,6 +97,15 @@ actual class LuaEngine actual constructor() : AutoCloseable {
         return pcallProcessing(ll, exec)
     }
 
+    /**
+     * POSIX implementation of [openStandardLibs]. Delegates to
+     * [LuaContext.openStandardLibs] which invokes [luaL_openlibs] to load
+     * every standard library into the engine's state.
+     */
+    actual fun openStandardLibs() {
+        ll.openStandardLibs()
+    }
+
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
         ll.state.checkState {
             ll.pushValue(value)

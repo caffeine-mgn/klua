@@ -270,10 +270,27 @@ static int alloc_cclosure_id(JNIEnv* env, lua_State* L) {
 
 JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_newState(JNIEnv* env, jclass cls) {
     (void)env; (void)cls;
+    /*
+     * Create a bare Lua state with NO standard library loaded. The embedder
+     * opts into specific libraries by calling Java_pw_binom_lua_LuaNative_openLibs
+     * (full luaL_openlibs) or one of the per-library functions. This avoids
+     * leaking the dangerous os/io/package/debug libs to untrusted Lua source.
+     */
     lua_State* L = luaL_newstate();
     if (L == NULL) return 0;
-    luaL_openlibs(L);
     return lua_state_to_jlong(L);
+}
+
+/*
+ * Load every standard library. Equivalent to the previous unconditional
+ * luaL_openlibs() call but now opt-in — embedders that need the full
+ * stdlib (e.g. for backward compatibility) call this once after
+ * constructing the LuaEngine.
+ */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_openLibs(JNIEnv* env, jclass cls, jlong statePtr) {
+    (void)env; (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    luaL_openlibs(L);
 }
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_close(JNIEnv* env, jclass cls, jlong statePtr) {

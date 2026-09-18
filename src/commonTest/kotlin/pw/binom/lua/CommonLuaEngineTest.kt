@@ -7,7 +7,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun callTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         var called = false
         val closure = o.makeClosure {
@@ -21,7 +21,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun globalTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         e["test"] = LuaValue.of("Kotlin")
         assertEquals("Kotlin", e["test"].checkedString())
         assertTrue(e["test2"].isNil)
@@ -29,7 +29,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun evalTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val result = e.eval("return 123,456")
         assertEquals(2, result.size)
         assertEquals(123.0, result[0].checkedNumber())
@@ -38,7 +38,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun getFromTableRef() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         e["test"] = o.makeClosure {
             val table = it[0].checkedTable()
@@ -68,7 +68,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun testAutoCleanUserData() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         e["create"] = o.makeClosure {
             listOf(
@@ -85,7 +85,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun autoCleanClosureTest1() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         var called = false
         val o = ObjectContainer()
         e["make_function"] = o.makeClosure {
@@ -107,7 +107,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun autoCleanClosureTest2() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         var argCount = 0
         e["test"] = e.createACClosure { it ->
             argCount = it.size
@@ -120,7 +120,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun toStringTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         val TEST_DATA = "Test Data"
         val toStringFunc = o.makeClosure {
@@ -155,7 +155,7 @@ class CommonLuaEngineTest : AbstractTest() {
         val N2 = 10
         val N3 = 15
 
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         val obj = MyObject(N1)
         val lightUserData = o.add(obj)
@@ -172,7 +172,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun callPassedFunctionTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         var called = false
         e["for_call"] = o.makeClosure {
@@ -199,7 +199,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun refFuncCall() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val o = ObjectContainer()
         var called = false
         val ref = e.makeRef(
@@ -215,7 +215,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun throwException() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val c = ObjectContainer()
         e["throw_exception"] = c.makeClosure {
             throw RuntimeException("My message")
@@ -231,7 +231,7 @@ class CommonLuaEngineTest : AbstractTest() {
     @Test
     fun errorCatching() = start {
         try {
-            val e = LuaEngine()
+            val e = makeEngine()
             e.eval("fff()")
             fail("Lua should throw exception")
         } catch (e: LuaException) {
@@ -241,7 +241,7 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun metatableTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         val metatable = LuaValue.TableValue(
             mapOf("key".lua to "value".lua)
         )
@@ -275,7 +275,7 @@ class CommonLuaEngineTest : AbstractTest() {
         //   existing globalTest happened to also check `.value` so the bug
         //   wasn't caught there.
         // The fix pushes the integer Lua expects (1 for truthy, 0 for falsy).
-        val e = LuaEngine()
+        val e = makeEngine()
         for (b in listOf(true, false)) {
             val result = e.eval("return $b")
             val got = result[0].checkedBoolean()
@@ -285,13 +285,16 @@ class CommonLuaEngineTest : AbstractTest() {
 
     @Test
     fun arrayTest() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
+        // Lua 5.4 integer-looking table literals ({11, 1, ...}) are stored as
+        // the integer subtype, so readValueAt (Round 6/E15) returns LuaInt.
+        // Match the expectation accordingly.
         val original = listOf(
-            LuaValue.of(11.0),
-            LuaValue.of(1.0),
-            LuaValue.of(2.0),
-            LuaValue.of(44.0),
-            LuaValue.of(3.0),
+            LuaValue.LuaInt(11),
+            LuaValue.LuaInt(1),
+            LuaValue.LuaInt(2),
+            LuaValue.LuaInt(44),
+            LuaValue.LuaInt(3),
         )
         val res = e.eval(
             """
@@ -322,7 +325,7 @@ class CommonLuaEngineTest : AbstractTest() {
         // Kept here as a smoke-run for the OOP-shape eval that exercises closure
         // dispatch + metatables + table indexing all at once. If any of those
         // regress catastrophically this test will surface a LuaException.
-        val e = LuaEngine()
+        val e = makeEngine()
         val c = ObjectContainer()
 
         val meta = LuaValue.of(
@@ -381,7 +384,7 @@ myfunc(vasya)
         // createUserData(Any) takes a Kotlin object and wraps it in a
         // userdata so the object survives across Lua calls (until the
         // userdata is __gc'd or explicitly disposed).
-        val e = LuaEngine()
+        val e = makeEngine()
         val obj = MyObject(42)
         val ud = e.createUserData(obj)
         // Read the value back via .value() — the userdata's payload.
@@ -399,7 +402,7 @@ myfunc(vasya)
     fun createACFromAnyTest() = start {
         // createAC(Any?) is the auto-clean equivalent of createUserData(Any).
         // Object should remain reachable while userdata is alive.
-        val e = LuaEngine()
+        val e = makeEngine()
         val obj = MyObject(7)
         val ud = e.createAC(obj)
         assertEquals(7, ud.value<MyObject>().value,
@@ -415,7 +418,7 @@ myfunc(vasya)
         // ObjectContainer — same wrap-and-pin behaviour as createUserData
         // (the LightUserData variant, the LightUserData already points at
         // a Kotlin object via StaticRefs/StaticRefs-equivalent).
-        val e = LuaEngine()
+        val e = makeEngine()
         val oc = ObjectContainer()
         val payload = MyObject(33)
         val lud = oc.add(payload)
@@ -426,7 +429,7 @@ myfunc(vasya)
     @Test
     fun callByNameTest() = start {
         // call(functionName, ...) invokes a Lua-side global function.
-        val e = LuaEngine()
+        val e = makeEngine()
         e["greet"] = e.eval("return function(name) return 'hi '..name end")[0]
         val res = e.call("greet", "World".lua)
         assertEquals(1, res.size)
@@ -436,7 +439,7 @@ myfunc(vasya)
     @Test
     fun evalMultipleReturnsTest() = start {
         // eval() should expose all returned values in order.
-        val e = LuaEngine()
+        val e = makeEngine()
         val res = e.eval("return 1, 'two', 3.0")
         assertEquals(3, res.size)
         assertEquals(1.0, res[0].checkedNumber())
@@ -446,7 +449,7 @@ myfunc(vasya)
 
     @Test
     fun evalRuntimeErrorThrowsLuaException() = start {
-        val e = LuaEngine()
+        val e = makeEngine()
         try {
             e.eval("error('boom')")
             fail("Lua-side error() should propagate as LuaException")
@@ -461,7 +464,7 @@ myfunc(vasya)
     fun engineReuseMultipleEvalsTest() = start {
         // A single LuaEngine should handle many evals back-to-back without
         // state leakage between them.
-        val e = LuaEngine()
+        val e = makeEngine()
         e.eval("counter = 0")
         for (i in 1..5) {
             e.eval("counter = counter + 1")
@@ -474,7 +477,7 @@ myfunc(vasya)
     fun closureWithManyArgsTest() = start {
         // A Kotlin closure taking several arguments should see them all
         // arrive from Lua side.
-        val e = LuaEngine()
+        val e = makeEngine()
         var totalArgs = 0
         var sumOfArgs = 0
         e["sum"] = e.createACClosure { args ->
@@ -493,7 +496,7 @@ myfunc(vasya)
     fun closureMultipleReturnValuesTest() = start {
         // A closure returning a list of LuaValues should be visible to Lua
         // as multiple return values.
-        val e = LuaEngine()
+        val e = makeEngine()
         e["multi"] = e.createACClosure { _ ->
             listOf("a".lua, 42.0.lua, true.lua)
         }
@@ -509,7 +512,7 @@ myfunc(vasya)
     fun setGlobalAndReadBackTest() = start {
         // Direct set + get of a global; ensures both halves of the
         // engine["x"] / engine["x"] =  idiom round-trip cleanly.
-        val e = LuaEngine()
+        val e = makeEngine()
         e["g"] = LuaValue.of("hello")
         assertEquals("hello", e["g"].checkedString(),
             "string set via []=, read via []")
@@ -524,7 +527,7 @@ myfunc(vasya)
     @Test
     fun tableRawGetSetTest() = start {
         // rawGet/rawSet bypass any __index/__newindex metamethods.
-        val e = LuaEngine()
+        val e = makeEngine()
         e["t"] = LuaValue.of(mapOf("a".lua to 1.0.lua))
         assertEquals(1.0, e["t"].checkedTable().rawGet("a".lua).checkedNumber())
         // rawSet then rawGet — should round-trip.

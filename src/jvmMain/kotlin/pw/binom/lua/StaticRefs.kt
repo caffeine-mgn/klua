@@ -4,6 +4,12 @@ import java.util.concurrent.atomic.AtomicInteger
 
 internal object StaticRefs {
     private val counter = AtomicInteger(1)
+    // NB: a [ConcurrentHashMap] here passes the standalone removeIfMatches
+    // repro but breaks 5 callback tests with NullPointerException. The NPE
+    // is not in this file — it reproduces only in conjunction with the
+    // callback / Cleaner path that runs concurrently with bridge calls.
+    // Root cause uninvestigated; keeping the historical [HashMap] +
+    // [synchronized] block until a clean repro is in place.
     private val map = HashMap<Long, Any?>()
 
     fun intern(value: Any?): Long {
@@ -28,7 +34,7 @@ internal object StaticRefs {
 
     /**
      * Removes every entry whose stored value is identity-equal to [value].
-     * Returns the number of entries removed. The single-thread implementation
+     * Returns the number of entries removed. The previous implementation
      * short-circuited after the first match, leaving N-1 entries stranded
      * after `add(obj)` x N; with the concurrent-engine case this becomes
      * an unbounded leak because each entry is only freed when its

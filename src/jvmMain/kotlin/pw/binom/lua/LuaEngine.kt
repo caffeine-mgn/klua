@@ -36,6 +36,17 @@ actual class LuaEngine : AutoCloseable {
         ll.close()
     }
 
+    /**
+     * JVM implementation of [openStandardLibs]. Calls [LuaNative.openLibs]
+     * which on the C side invokes [luaL_openlibs] to load every standard
+     * library into the state created by [newState].
+     *
+     * See [openStandardLibs] in commonMain for the design rationale.
+     */
+    actual fun openStandardLibs() {
+        LuaNative.openLibs(ll.state)
+    }
+
     actual operator fun get(name: String): LuaValue {
         LuaNative.getGlobal(ll.state, name)
         val value = ll.readValue(-1, true)

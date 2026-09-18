@@ -14,6 +14,18 @@ internal object LuaNative {
 
     external fun init()
     external fun newState(): Long
+    /**
+     * Load every Lua 5.4 standard library (`base`, `package`, `coroutine`,
+     * `table`, `io`, `os`, `string`, `math`, `utf8`, `debug`) into the
+     * given state. Opt-in: a fresh state from [newState] is bare, with
+     * NO library loaded; the embedder calls this to opt into the full
+     * standard library when the Lua source is trusted.
+     *
+     * For finer-grained control the embedder can call `openBase`/`openString`
+     * /etc. to load only the safe subset and avoid exposing `os`, `io`,
+     * `package`, and `debug`.
+     */
+    external fun openLibs(state: Long)
     external fun close(state: Long)
 
     external fun getTop(state: Long): Int

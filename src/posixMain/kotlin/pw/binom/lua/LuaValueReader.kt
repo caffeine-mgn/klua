@@ -29,7 +29,17 @@ internal fun LuaContext.readValue(index: Int, ref: Boolean): LuaValue {
 //    println("LuaValueReader #0")
     return when (type) {
         LUA_TNONE, LUA_TNIL -> LuaValue.Nil
-        LUA_TNUMBER -> LuaValue.Number(lua_tonumberx(state, index, null))
+        LUA_TNUMBER -> if (lua_isinteger(state, index) != 0) {
+            // Lua 5.4 distinguishes integer and float subtypes. Without the
+            // isinteger check the round-trip `set("x", of(5L))` then `get("x")`
+            // returned Number(5.0), making LuaInt unobservable in any read
+            // path. lua_tointegerx succeeds for floats too, but the better
+            // discriminator is lua_isinteger — true only when the underlying
+            // number is the integer subtype (no silent fractional truncation).
+            LuaValue.LuaInt(lua_tointegerx(state, index, null))
+        } else {
+            LuaValue.Number(lua_tonumberx(state, index, null))
+        }
         LUA_TBOOLEAN -> LuaValue.Boolean(lua_toboolean(state, index) != 0)
         LUA_TSTRING -> LuaValue.String(lua_tostring(state, index) ?: "")
         LUA_TFUNCTION -> {

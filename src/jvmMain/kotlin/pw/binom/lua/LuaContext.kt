@@ -86,7 +86,20 @@ internal class LuaContext {
             LuaType.NONE, LuaType.NIL -> LuaValue.Nil
             LuaType.BOOLEAN -> LuaValue.Boolean(LuaNative.toBoolean(statePtr, index))
             LuaType.LIGHTUSERDATA -> LuaValue.LightUserData(LuaNative.toUserdata(statePtr, index))
-            LuaType.NUMBER -> LuaValue.Number(LuaNative.toNumber(statePtr, index))
+            LuaType.NUMBER -> {
+                // Lua 5.4 stores integers and floats as distinct subtypes.
+                // Distinguish them so `engine.set("x", of(5L))` then
+                // `engine.get("x")` returns a LuaInt, not a Number. The
+                // isInteger() helper calls `lua_tointegerx` and reports true
+                // only when the value is already the integer subtype
+                // (Lua's `5.0` still comes back as Number, only true
+                // integer literals / arith produce LuaInt).
+                if (LuaNative.isInteger(statePtr, index)) {
+                    LuaValue.LuaInt(LuaNative.toInteger(statePtr, index))
+                } else {
+                    LuaValue.Number(LuaNative.toNumber(statePtr, index))
+                }
+            }
             LuaType.STRING -> LuaValue.String(LuaNative.toString(statePtr, index) ?: "")
             LuaType.TABLE -> {
                 if (ref) {

@@ -73,4 +73,19 @@ expect class LuaEngine : AutoCloseable {
      * Calls [value] with [args]
      */
     fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue>
+
+    /**
+     * Loads every Lua 5.4 standard library into this engine's state.
+     *
+     * A fresh [LuaEngine] is intentionally bare — NO standard library
+     * is loaded by default. Calling this method opts the engine into the
+     * full stdlib (`base`, `package`, `coroutine`, `table`, `io`, `os`,
+     * `string`, `math`, `utf8`, `debug`), which restores the historical
+     * behaviour for callers that trust the Lua source they run.
+     *
+     * For untrusted Lua source, leave this un-called: the engine will
+     * then refuse any access to `os.execute`, `io.open`, `package.loadlib`,
+     * `debug.*` with a "attempt to call a nil value (global 'os')" error.
+     */
+    fun openStandardLibs()
 }

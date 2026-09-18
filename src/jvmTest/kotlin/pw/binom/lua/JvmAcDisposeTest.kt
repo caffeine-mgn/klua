@@ -8,14 +8,14 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 
-class JvmAcDisposeTest {
+class JvmAcDisposeTest : AbstractTest() {
 
     /** JVM-test hook for LuaNative.callbacks.size — the bridge registry. */
     private fun bridgeCount(): Int = LuaNative.callbackCount
 
     @Test
     fun manualDisposeWorks() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val container = ObjectContainer()
         val baseline = StaticRefs.size
         engine["create"] = container.makeClosure {
@@ -49,7 +49,7 @@ class JvmAcDisposeTest {
 
     @Test
     fun autoCleanUserdataGetsDisposedByLuaGc() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val container = ObjectContainer()
         val baseline = StaticRefs.size
         engine["create"] = container.makeClosure {
@@ -97,7 +97,7 @@ class JvmAcDisposeTest {
      */
     @Test
     fun tableAndFunctionRefsDoNotLeakIntoRegistry() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val context = engine.ll
         val baseline = LuaNative.registrySize(context.state)
         // Generate 1000 unique tables/closures through Lua and drop the Kotlin
@@ -143,7 +143,7 @@ class JvmAcDisposeTest {
      */
     @Test
     fun lightUserDataDoesNotLeakIntoStaticRefs() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val container = ObjectContainer()
         val baseline = StaticRefs.size
         fun makeAndDrop() {
@@ -179,7 +179,7 @@ class JvmAcDisposeTest {
      */
     @Test
     fun createUserDataFromLightUserDataDoesNotOrphanEntries() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val baseline = StaticRefs.size
         fun makeAndDrop() {
             val oc = ObjectContainer()
@@ -225,7 +225,7 @@ class JvmAcDisposeTest {
      */
     @Test
     fun objectContainerBridgesDoNotLeakIntoCallbacksMap() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val baseline = bridgeCount()
         fun makeAndDrop() {
             val oc = ObjectContainer()
@@ -269,7 +269,7 @@ class JvmAcDisposeTest {
      */
     @Test
     fun tableRefToValueAndMetatableAreStackBalanced() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val metaTable = LuaValue.of(
             mapOf(
                 "marker".lua to LuaValue.of("metamarker"),
@@ -345,7 +345,7 @@ class JvmAcDisposeTest {
      */
     @Test
     fun createACClosureDoesNotLeakCallbacks() {
-        val engine = LuaEngine()
+        val engine = makeEngine()
         val baseline = bridgeCount()
         // Create many AC closures and assign them to Lua globals.
         // Chunked to keep the generated drop script short enough that

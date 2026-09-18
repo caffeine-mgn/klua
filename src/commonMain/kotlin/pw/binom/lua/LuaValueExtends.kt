@@ -42,8 +42,15 @@ fun LuaValue.checkedString() =
 fun LuaValue.checkedInt() =
     (this as? LuaValue.LuaInt)?.value ?: throw LuaCastException("Can't cast ${this::class.simpleName} to LuaInt")
 
-fun LuaValue.checkedNumber() =
-    (this as? LuaValue.Number)?.value ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Number")
+fun LuaValue.checkedNumber(): Double = when (this) {
+    is LuaValue.Number -> value
+    // Since Round 6/E15, Lua-side integer values come back as [LuaValue.LuaInt]
+    // rather than [LuaValue.Number] so the integer subtype is preserved.
+    // Accept both via the unified numeric helper — callers that need the
+    // exact subtype should use [checkedInt] or pattern-matching.
+    is LuaValue.LuaInt -> value.toDouble()
+    else -> throw LuaCastException("Can't cast ${this::class.simpleName} to Number")
+}
 
 fun LuaValue.checkedBoolean() =
     (this as? LuaValue.Boolean)?.value ?: throw LuaCastException("Can't cast ${this::class.simpleName} to Boolean")
