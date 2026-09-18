@@ -63,8 +63,16 @@ actual sealed interface LuaValue {
 
         fun dispose() {
             val p = ptr ?: return
+            // Cancel the registered Cleaner BEFORE the unref so the Cleaner
+            // can't fire later with a stale refId and trigger a second
+            // luaL_unref on the same registry slot. luaL_unref is idempotent
+            // in spirit but Lua 5.4's freelist management puts the slot back
+            // onto the freelist AND writes the freelist head into
+            // registry[refId] — a second unref on a recycled slot creates a
+            // self-loop and corrupts the registry freelist.
+            cleanable.clean()
             StaticRefs.dispose(p)
-            LuaNative.unref(ll.state, LUA_REGISTRYINDEX, refId)
+            if (ll.state != 0L) LuaNative.unref(ll.state, LUA_REGISTRYINDEX, refId)
         }
 
         // Cleaner action: invoked when this UserData becomes phantom-reachable.
@@ -74,27 +82,15 @@ actual sealed interface LuaValue {
         // We resolve the state pointer at RUN time (via `ll.state`) rather
         // than capturing the raw Long at construction: if the owning engine
         // is closed before this wrapper is GC'd, `ll.state` becomes 0L and
-        // the action is a no-op — capturing the raw Long would leave the
-        // action pointing at freed native memory.
-        private class UserDataAction(
-            private val ll: LuaContext,
-            private val refId: Int,
-        ) : Runnable {
-            override fun run() {
-                val statePtr = ll.state
-                if (statePtr == 0L) return
-                // Resolve the Lua userdata's memory address from the registry
-                // entry, then drop both the StaticRefs entry and the registry
-                // reference. The userdata becomes Lua-orphaned, so Lua's next
-                // collectgarbage() runs __gc → disposeUserdata(mem) on the
-                // (now-cleaned) Kotlin side.
-                LuaNative.rawGetI(statePtr, LUA_REGISTRYINDEX, refId.toLong())
-                val p = LuaNative.userdataPtr(statePtr, -1)
-                LuaNative.pop(statePtr, 1)
-                if (p != 0L) StaticRefs.dispose(p)
-                LuaNative.unref(statePtr, LUA_REGISTRYINDEX, refId)
-            }
-        }
+        // Note: a private `UserDataAction` Cleaner class used to live here
+        // and described in its comment the same behaviour as the C-side
+        // klua_userdata_gc_trampoline (rawGetI → userdataPtr → StaticRefs.dispose).
+        // The class was never wired into a registration — the live Cleaner
+        // path is `RefAction(ll, refId)` above, which only unrefs the
+        // registry slot. The C trampoline owns the StaticRefs dispose.
+        // Keeping the class around was a maintenance foot-gun (the comment
+        // was misleading: a future reader could wire it in and double-dispose
+        // or drop the C-side path). Deleted; documented here.
     }
 
 
@@ -103,7 +99,11 @@ actual sealed interface LuaValue {
 
         actual override val value: Any? get() = StaticRefs.get(ptr)
 
-        fun dispose() { StaticRefs.dispose(ptr) }
+        fun dispose() {
+            val p = ptr ?: return
+            cleanable?.clean()
+            StaticRefs.dispose(p)
+        }
 
         // Auto-dispose the StaticRefs entry when the Kotlin wrapper becomes
         // phantom-reachable. Without this, every `ObjectContainer.add(data)`
@@ -442,19 +442,27 @@ internal fun pcallCall(ll: LuaContext, args: List<LuaValue>): List<LuaValue> {
     args.forEach { pushValue(ll.state, it) }
     val r = LuaNative.pcall(ll.state, args.size, -1, 0)
     when (r) {
+        // Lua 5.4 pcallk return codes (lua.h):
+        //   LUA_OK=0, LUA_ERRRUN=2, LUA_ERRMEM=4, LUA_ERRERR=5.
+        // LuaNative.pcall returns the raw status unchanged, so dispatch by
+        // those exact values. pcallProcessing in LuaEngine.kt has the same
+        // table and is the ground truth — keep them in sync.
         0 -> {
-            val count = LuaNative.getTop(ll.state) - topBefore + 1
-            val list = (1..count).map { ll.readValue(it, true) }
-            LuaNative.pop(ll.state, count)
+            val count = LuaNative.getTop(ll.state) - topBefore
+            val list = (1..count).map { ll.readValue(topBefore + it, true) }
+            if (count > 0) LuaNative.pop(ll.state, count)
             return list
         }
-        4 -> {
-            val msg = LuaNative.toString(ll.state, -1) ?: "runtime error"
+        2 -> {
+            val msg = LuaNative.toString(ll.state, -1) ?: "<lua error>"
             LuaNative.pop(ll.state, 1)
             throw LuaException(msg)
         }
-        5 -> throw RuntimeException("memory allocation error")
-        6 -> throw RuntimeException("error while running the message handler")
+        4 -> {
+            LuaNative.pop(ll.state, 1)
+            throw RuntimeException("memory allocation error")
+        }
+        5 -> throw RuntimeException("error while running the message handler")
         else -> throw RuntimeException("Unknown pcall status: $r")
     }
 }

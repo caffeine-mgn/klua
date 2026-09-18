@@ -676,8 +676,15 @@ JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_userdataPtr(JNIEnv* env, jcl
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_setIUservalue(JNIEnv* env, jclass cls, jlong statePtr, jint idx, jlong v) {
     (void)env; (void)cls;
-    lua_setiuservalue(jlong_to_lua_state(statePtr), (int)idx, 1);
-    (void)v;
+    /* Pre-push the value as a lightuserdata (mirroring how the Kotlin side
+     * stores raw pointers for userdata payloads) — lua_setiuservalue reads
+     * the value from the top of the stack and assigns it to the userdata's
+     * i-th uservalue slot. The previous implementation ignored `v` and
+     * silently popped whatever happened to be on the stack, which let
+     * callers think the value they passed was being stored. */
+    lua_State* L = jlong_to_lua_state(statePtr);
+    lua_pushlightuserdata(L, jlong_to_ptr(v));
+    lua_setiuservalue(L, (int)idx, 1);
 }
 
 JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_getIUservalue(JNIEnv* env, jclass cls, jlong statePtr, jint idx) {

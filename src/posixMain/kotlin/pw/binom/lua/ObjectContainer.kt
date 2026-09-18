@@ -37,21 +37,33 @@ actual class ObjectContainer actual constructor() {
     }
 
     actual fun removeClosure(data: LuaValue.FunctionRef): Boolean {
-        if (data.ptr != CLOSURE_FUNCTION)
-            return false
-        return remove(data.toValue())
+        // The previous implementation compared `data.ptr` against the
+        // cfunction sentinel `CLOSURE_FUNCTION` — but FunctionRef's `ptr`
+        // is the address Lua reports for the underlying cclosure, not the
+        // cfunction address. That always returned false (unless toValue()
+        // happened to be cheap), leaving the bridge's StableRef stranded.
+        // Resolve the closure's underlying LuaFunction via toValue() and
+        // delegate to the (Any) overload, which knows how to dispose the
+        // original entry point.
+        return removeClosure(data.toValue())
     }
 
     actual fun removeClosure(data: LuaValue.FunctionValue): Boolean {
         if (data.upValues.size != 1) {
             return false
         }
-        val func = data.upValues[0]
-        if (func is LuaValue.LightUserData && func.value is LuaFunction) {
-            func.dispose()
-            return true
-        }
-        return true
+        val upvalue = data.upValues[0]
+        // The upvalue is a LightUserData wrapping a StableRef<LuaFunction>
+        // for any closure built via makeClosure. Extract the underlying
+        // Kotlin function so we can clean both maps by identity.
+        val lud = upvalue as? LuaValue.LightUserData ?: return false
+        val inner = lud.lightPtr ?: return false
+        val underlying = inner.asStableRef<Any>().get()
+        // Use remove(Any) (which knows the real identity path) and also
+        // drop the LightUserData's StableRef to avoid leaking the upvalue.
+        val removed = remove(underlying)
+        lud.dispose()
+        return removed
     }
 
     actual fun getClosure(func: LuaValue.FunctionValue): LuaFunction? {

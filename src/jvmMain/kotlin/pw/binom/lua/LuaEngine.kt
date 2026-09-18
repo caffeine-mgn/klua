@@ -50,14 +50,23 @@ actual class LuaEngine : AutoCloseable {
 
     actual fun eval(text: String): List<LuaValue> {
         val r = LuaNative.loadString(ll.state, text)
+        // Lua 5.4 loadStringx returns:
+        //   LUA_OK=0, LUA_ERRSYNTAX=3, LUA_ERRMEM=4, LUA_ERRERR=5.
+        // For 3 and 4 the runtime pushes an error message at the top of the
+        // stack; for 5 (error in error handler) the stack is unchanged.
         when (r) {
             0 -> {}
+            3 -> {
+                val msg = LuaNative.toString(ll.state, -1)
+                LuaNative.pop(ll.state, 1)
+                throw LuaException(msg ?: "Lua syntax error")
+            }
             4 -> {
                 val msg = LuaNative.toString(ll.state, -1)
                 LuaNative.pop(ll.state, 1)
-                throw LuaException(msg ?: "Compile error")
+                throw RuntimeException("Lua memory allocation error: ${msg ?: "<no message>"}")
             }
-            5 -> throw LuaException("LUA_ERRMEM")
+            5 -> throw LuaException("Lua error in error handler")
             else -> throw LuaException("Can't eval text \"$text\" (status=$r)")
         }
         val exitCode = LuaNative.pcall(ll.state, 0, -1, 0)
@@ -183,6 +192,18 @@ actual class LuaEngine : AutoCloseable {
     }
 
     actual fun setAC(userdata: LuaValue.UserData) {
+        // NOTE: the historical behaviour here was to use closureAutoGcFunction,
+        // which makes disposeCallback a no-op (the id was never registered with
+        // a LuaCallbackBridge). That is in fact a leak — the StaticRefs entry
+        // placed under the userdata's mem address would never be released.
+        // Switching to userdataAutoGcFunction (which invokes disposeUserdata ->
+        // StaticRefs.dispose) looked like the obvious fix, but exercising it
+        // through JvmAcDisposeTest.createUserDataFromLightUserDataDoesNotOrphanEntries
+        // exposed a double-dispose where the inner object passed through
+        // createUserData ends up being released twice (once via the explicit
+        // __gc path, once via the Cleaner). Investigation is queued; the fix
+        // needs a small refactor around ownership that does not regress this
+        // test. Keeping the historical implementation here for now.
         val table = userdata.metatable
         if (table is LuaValue.Table) {
             table["__gc".lua] = closureAutoGcFunction

@@ -37,7 +37,12 @@ internal object LuaNative {
     external fun pushCFunction(state: Long, callbackId: Int)
     external fun pushGcFunction(state: Long, callbackId: Int)
     external fun pushUserdataGcFunction(state: Long)
-    external fun reserveCallbackId(state: Long): Int
+    // NOTE: a dead `external fun reserveCallbackId(state: Long): Int` used to
+    // live here — it had no matching JNI symbol (the C side exports
+    // `Java_pw_binom_lua_LuaNative_registerCallback`, not ..._reserveCallbackId)
+    // and zero callers. The real allocator is `nextCallbackId()` on the
+    // Kotlin side and `alloc_cclosure_id` on the C side. Deleted; documented
+    // here to prevent resurrection.
 
     external fun toBoolean(state: Long, idx: Int): Boolean
     external fun toInteger(state: Long, idx: Int): Long

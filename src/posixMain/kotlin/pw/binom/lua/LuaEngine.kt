@@ -16,6 +16,16 @@ actual class LuaEngine actual constructor() : AutoCloseable {
 
 
     actual override fun close() {
+        // Mirror the JVM contract: explicitly release the Lua state and
+        // unregister from the global registry so subsequent calls into the
+        // Cleaner's SafeRefList don't keep this engine's LuaContext alive
+        // forever. The Cleaner that backs the LuaContext wrapper remains
+        // as a safety net for callers who forget to close().
+        val s = ll.state
+        if (s != null) {
+            LuaContextRegistry.unregister(s)
+            lua_close(s)
+        }
     }
 
     actual operator fun get(name: String): LuaValue {
@@ -57,6 +67,11 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     ): List<LuaValue> {
         lua_getglobal(ll.state, functionName)
         if (lua_isnil1(ll.state, -1)) {
+            // Pop the nil pushed by lua_getglobal before throwing; the JVM
+            // counterpart pops in both branches and the POSIX side already
+            // pops in the not-a-function branch. Without this pop the call
+            // accumulates one stack slot per failed lookup.
+            lua_pop(ll.state, 1)
             throw LuaException("Function \"$functionName\" not found")
         }
         if (!lua_isfunction1(ll.state, -1)) {
@@ -110,6 +125,11 @@ actual class LuaEngine actual constructor() : AutoCloseable {
             val mem = lua_newuserdata1(ll.state, Heap.PTR_SIZE)!!
             Heap.setPtrFromPtr(mem, value = value.lightPtr)
             val ret = LuaValue.UserData(ll.state.makeRef(), ll)
+            // Install __gc mirroring JVM createUserData(LightUserData) so
+            // the underlying StableRef is disposed when Lua collects the
+            // userdata. Previously this branch silently skipped the
+            // metatable, leaking every AC userdata's payload.
+            ret.metatable = LuaValue.TableValue("__gc".lua to userdataAutoGcFunction)
             return ret
         }
     }
@@ -129,30 +149,30 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
-        // The function ref is passed as a 1-upvalue Lua closure (which becomes
-        // the __call metamethod) — same dispatch path as ObjectContainer.makeClosure,
-        // just with __call installed on a userdata metatable. The userdata payload
-        // is a no-op pointer that the new userdataGc disposes the function ref via
-        // a parallel mechanism — but actually, since __call is a Lua closure with
-        // its own upvalue, it does NOT need the userdata payload to find the
-        // function. We use the userdata payload solely so userdataGc has something
-        // on Lua's __gc call to dispose.
-        //
-        // To keep things consistent, we put the SAME StableRef pointer in BOTH the
-        // closure upvalue AND the userdata payload: closure upvalue is what
-        // CLOSURE_FUNCTION reads at call time; userdata payload is what userdataGc
-        // reads at dispose time. They point at the same StableRef<LuaFunction>;
-        // userdataGc disposes it once.
+        // Single source of truth: the userdata's payload holds the only
+        // StableRef<LuaFunction>. The metatable's __call installs a Lua
+        // closure backed by AC_CLOSURE_FUNCTION (a no-upvalue cfunction)
+        // that reads the same ref from the userdata payload at idx 1. When
+        // Lua's __gc fires, userdataGc disposes the payload's StableRef and
+        // the Lua closure has nothing to dangle — closing the UAF window
+        // reported after the d90a8f8 JVM-side fix.
         val ref = StableRef.create(func)
         val luaFunc = LuaValue.FunctionValue(
-            ptr = CLOSURE_FUNCTION,
-            upValues = listOf(LuaValue.LightUserData(ref.asCPointer())),
+            ptr = AC_CLOSURE_FUNCTION,
+            upValues = emptyList(),
         )
         val userData = createUserData(LuaValue.LightUserData(ref.asCPointer()))
-        userData.metatable = LuaValue.TableValue(
-            "__call".lua to luaFunc,
-            "__gc".lua to closureAutoGcFunction,
-        )
+        // createUserData already installed a default __gc metatable mapping
+        // to userdataAutoGcFunction (which on POSIX aliases userdataGc);
+        // augment it with __call but DO NOT overwrite __gc.
+        val existing = userData.metatable
+        val merged = when (existing) {
+            is LuaValue.TableValue -> existing.map.toMutableMap()
+            is LuaValue.Table -> existing.toMap().toMutableMap()
+            else -> mutableMapOf<LuaValue, LuaValue>()
+        }
+        merged[LuaValue.of("__call")] = luaFunc
+        userData.metatable = LuaValue.TableValue(merged)
         return userData
     }
 
@@ -172,12 +192,20 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual fun createAC(value: Any?): LuaValue.UserData {
-        try {
-            val ref = value?.let { StableRef.create(it) }?.asCPointer()
-            return createAC(LuaValue.LightUserData(ref))
-        } catch (e: Throwable) {
-            e.printStackTrace()
-            throw e
+        // Capture the StableRef so the catch path can dispose it on
+        // failure — without this, a throw from createAC(LightUserData(...))
+        // (e.g. on Lua OOM) leaks the ref and pins the Kotlin object for
+        // the lifetime of the engine. Also drop the printStackTrace spam;
+        // the exception propagates unchanged.
+        if (value == null) {
+            return createAC(LuaValue.LightUserData(null))
+        }
+        val ref = StableRef.create(value)
+        return try {
+            createAC(LuaValue.LightUserData(ref.asCPointer()))
+        } catch (t: Throwable) {
+            ref.dispose()
+            throw t
         }
     }
 }
@@ -204,12 +232,19 @@ private fun pcallProcessing(luaLib: LuaContext, exeCode: Int): List<LuaValue> {
         }
 
         LUA_ERRRUN -> {
+            // Multi-value Lua errors can leave several entries on the stack
+            // before luaL_traceback is called. Walk all of them into the
+            // traceback so the original N-1 error values do not leak across
+            // subsequent operations. The single-string fast path pops the
+            // lone entry after reading it.
+            val topBefore = lua_gettop(luaLib.state)
             val message =
-                if (lua_gettop(luaLib.state) == 1 && lua_isstring(luaLib.state, 1) != 0) {
+                if (topBefore == 1 && lua_isstring(luaLib.state, 1) != 0) {
                     val str = lua_tostring(luaLib.state, 1)
-                    lua_pop(luaLib.state, 1)
+                    if (topBefore > 0) lua_pop(luaLib.state, topBefore)
                     str
                 } else {
+                    if (topBefore > 0) lua_pop(luaLib.state, topBefore)
                     null
                 }
             luaL_traceback(luaLib.state, luaLib.state, message, 1)

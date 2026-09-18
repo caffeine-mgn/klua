@@ -94,19 +94,28 @@ actual sealed interface LuaValue {
     actual class LuaInt actual constructor(actual val value: Long) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
+        // Mirror JVM-side: guard with `is LuaInt` first so the primitive
+        // receiver doesn't compare against a wrapper. `value == other`
+        // here desugars to `value.equals(other)` — Long.equals(LuaInt)
+        // returns false because LuaInt is not a primitive Long, and every
+        // TableValue hash lookup on POSIX silently returned Nil.
+        override fun equals(other: Any?): kotlin.Boolean = other is LuaInt && value == other.value
     }
 
     actual class Boolean actual constructor(actual val value: kotlin.Boolean) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
+        // Guard with `is Boolean` first — mirror the JVM-side fix and the
+        // LuaInt.equals rationale so TableValue hashes don't silently miss.
+        override fun equals(other: Any?): kotlin.Boolean = other is Boolean && value == other.value
     }
 
     actual class String actual constructor(actual val value: kotlin.String) : LuaValue {
         override fun toString(): kotlin.String = value.toString()
         override fun hashCode(): Int = value.hashCode()
-        override fun equals(other: Any?): kotlin.Boolean = value == other
+        // Guard with `is String` first — mirror the JVM-side fix and the
+        // LuaInt.equals rationale so TableValue hashes don't silently miss.
+        override fun equals(other: Any?): kotlin.Boolean = other is String && value == other.value
     }
 
     actual sealed interface Ref : LuaValue {

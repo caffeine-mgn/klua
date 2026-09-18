@@ -52,6 +52,15 @@ actual class ObjectContainer actual constructor() {
         closures[func.callbackId]
 
     actual fun clear() {
+        // The previous implementation just emptied `closures` without
+        // unregistering the corresponding bridges from LuaNative.callbacks,
+        // so the JVM-global callback map grew by one entry per makeClosure
+        // call until the owning container's BridgeCleaner fired at GC
+        // time — often much later than the caller's intent of "release
+        // immediately". Iterate the live ids, unregister each, then drop
+        // the local map.
+        val ids = closures.snapshotIds()
+        ids.forEach { LuaNative.unregisterCallback(it) }
         closures.clear()
     }
 
@@ -111,4 +120,6 @@ private class ClosureMap {
     fun clear() {
         synchronized(map) { map.clear() }
     }
+
+    fun snapshotIds(): List<Int> = synchronized(map) { map.keys.toList() }
 }

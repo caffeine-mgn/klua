@@ -29,28 +29,35 @@ internal class LuaContext {
  * closureGc, userdataGc) can recover the [LuaContext] from the state pointer
  * they're given without round-tripping through upvalues.
  *
- * The registry uses a single global slot because Lua/Native (konan) does not
- * expose any way to attach a C-level opaque userdata pointer to a lua_State.
- *
- * Single-slot is fine: tests run each LuaEngine in its own Kotlin/Native test
- * binary process, and there is no observable multi-engine concurrency in the
- * codebase. If that ever changes, switch to a CMap<CPointer, LuaContext>.
+ * A multi-slot map is required (not the previous single-slot `current` Pair):
+ * a second LuaEngine in the same process overwrites the slot, and the first
+ * engine's callbacks then silently no-op in CLOSURE_FUNCTION or leak StableRefs
+ * in userdataGc because `lookup(state_of_first) -> null`. Tests that spin up
+ * multiple engines — and any service that scopes an engine per request — hit
+ * this in production.
  */
 @OptIn(ExperimentalForeignApi::class)
 internal object LuaContextRegistry {
-    private var current: Pair<LuaState, LuaContext>? = null
+    // The previous implementation used a single-slot Pair<state, ctx> that any
+    // second LuaEngine would silently overwrite, breaking every Kotlin callback
+    // dispatched for the first engine. A multi-slot map is required.
+    //
+    // Concurrency: callback dispatch is single-threaded per engine on POSIX
+    // (Lua 5.4's lua_State is not thread-safe), and engine construction is
+    // typically serial in embeddings. Plain HashMap without explicit locking
+    // is sufficient — multi-engine *lookup* happens on whichever thread the
+    // engine's callback runs, but a single lua_State is owned by exactly one
+    // thread. Concurrent LuaEngine *construction* from multiple threads is
+    // the caller's contract to serialise.
+    private val map = HashMap<LuaState, LuaContext>()
 
     fun register(state: LuaState, ctx: LuaContext) {
-        current = state to ctx
+        map[state] = ctx
     }
 
     fun unregister(state: LuaState) {
-        val cur = current ?: return
-        if (cur.first === state) current = null
+        map.remove(state)
     }
 
-    fun lookup(state: LuaState): LuaContext? {
-        val cur = current ?: return null
-        return if (cur.first === state) cur.second else null
-    }
+    fun lookup(state: LuaState): LuaContext? = map[state]
 }

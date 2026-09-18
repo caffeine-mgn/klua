@@ -20,17 +20,13 @@ import platform.internal_lua.lua_type
  *
  * One cfunction serves all AC values, regardless of whether they wrap a Kotlin
  * object via [LuaEngine.createAC] or a [LuaFunction] via [LuaEngine.createACClosure].
- *
- * Replaces the broken pre-existing `userdataGc` (which tried to dispose a
- * `StableRef<LuaContext>` from a payload that never held one — the value was
- * a `StableRef<Any>` of whatever the user actually passed).
  */
 val userdataGc: lua_CFunction = staticCFunction { state ->
     try {
         if (state == null) return@staticCFunction 0
         if (lua_gettop(state) < 1) return@staticCFunction 0
         if (lua_type(state, 1) != LUA_TUSERDATA) return@staticCFunction 0
-        val ptr = Heap.getPtrFromPtr(state.readUserData(1))
+        val ptr = state.readUserData(1)
         if (ptr != null) {
             ptr.asStableRef<Any>().dispose()
         }
@@ -42,23 +38,21 @@ val userdataGc: lua_CFunction = staticCFunction { state ->
 }
 
 /**
- * C entry-point for any Lua closure created by [ObjectContainer.makeClosure]
- * or [LuaEngine.createACClosure].
- *
- * Upvalue layout:
- *   upvalue(1) = LUA_TLIGHTUSERDATA holding a StableRef<LuaFunction> pointer.
+ * C entry-point for any plain Lua closure created by
+ * [ObjectContainer.makeClosure]. Reads the [kotlinx.cinterop.LuaFunction]
+ * reference from upvalue(1) — a [kotlinx.cinterop.StableRef] holding the
+ * Kotlin lambda.
  *
  * The [LuaContext] is recovered via [LuaContextRegistry] because Lua/Native
  * gives us no way to attach arbitrary userdata to a lua_State, so we maintain
- * a global (state → context) pointer set when the engine is constructed.
+ * a (state → context) map registered when the engine is constructed.
  *
- * Two calling conventions are supported:
- *  - Direct closure call: `f(a,b,c)`. Args are at idx 1..N, no userdata prefix.
- *  - Userdata-with-`__call`: `obj(a,b,c)`. Lua's tryfuncTM shifts `obj` into
- *    the args slot before invoking the metamethod, so idx 1 holds the
- *    userdata (auto-prepended self). We detect and strip that arg by type
- *    check rather than by sentinel value — the previous AC_CLOSURE_PTR
- *    sentinel was redundant with the LUA_TUSERDATA check and got removed.
+ * The args are read directly from indices 1..count — there is no userdata
+ * "self" prefix because plain closures created via makeClosure are not
+ * attached to a userdata. AC-closures (the userdata-with-`__call` form
+ * produced by [LuaEngine.createACClosure]) use a separate cfunction,
+ * [AC_CLOSURE_FUNCTION], because Lua's tryfuncTM auto-prepends the userdata
+ * as idx 1.
  */
 val CLOSURE_FUNCTION: lua_CFunction = staticCFunction { state ->
     try {
@@ -70,16 +64,48 @@ val CLOSURE_FUNCTION: lua_CFunction = staticCFunction { state ->
             ?: return@staticCFunction 0
         val func = funcPtr.asStableRef<LuaFunction>().get()
 
-        // lua_gettop returns arg count as seen by this cfunction. For a direct
-        // call f(a,b,c) that's 3. For obj(a,b,c) over __call metamethod that's
-        // 4 — Lua's tryfuncTM pushes the userdata into the args. Strip the
-        // userdata by type check; no sentinel value needed.
         val count = lua_gettop(state)
-        val args = if (count > 0 && lua_type(state, 1) == LUA_TUSERDATA) {
-            if (count > 1) (2..count).map { ctx.readValue(it, true) } else emptyList()
-        } else {
-            (1..count).map { ctx.readValue(it, true) }
-        }
+        val args = (1..count).map { ctx.readValue(it, true) }
+        lua_pop(state, count)
+
+        val result = func.call(args)
+        result.forEach { ctx.pushValue(it) }
+        result.size
+    } catch (e: Throwable) {
+        luaL_error(state, "$e")
+        0
+    }
+}
+
+/**
+ * C entry-point for any Lua closure installed as a userdata's `__call`
+ * metamethod by [LuaEngine.createACClosure]. Reads the wrapped Kotlin
+ * [LuaFunction] from the userdata's payload (idx 1) and looks up arg 1..
+ * Without upvalues the closure has nothing to dangle when Lua's __gc
+ * disposes the userdata's payload.
+ *
+ * Pre-fix: AC closures shared a StableRef between the closure's upvalue AND
+ * the userdata payload; Lua's __gc would dispose it via the payload, leaving
+ * the closure's upvalue pointing at freed memory. Splitting into a no-upvalue
+ * closure + AC-dedicated cfunction closes that UAF.
+ */
+val AC_CLOSURE_FUNCTION: lua_CFunction = staticCFunction { state ->
+    try {
+        if (state == null) return@staticCFunction 0
+        val ctx = LuaContextRegistry.lookup(state)
+            ?: return@staticCFunction 0
+        if (lua_type(state, 1) != LUA_TUSERDATA) return@staticCFunction 0
+
+        // idx 1 is the userdata (self); its payload is a StableRef<LuaFunction>.
+        val userDataPtr = state.readUserData(1) ?: return@staticCFunction 0
+        val func = userDataPtr.asStableRef<Any>().get() as? LuaFunction
+            ?: return@staticCFunction 0
+
+        val count = lua_gettop(state)
+        // Args start at idx 2 (after the self userdata). Strip the explicit
+        // count check because for a plain `__call(self)` there are no extra
+        // args; with at least one extra arg we read 2..count.
+        val args = if (count >= 2) (2..count).map { ctx.readValue(it, true) } else emptyList()
         lua_pop(state, count)
 
         val result = func.call(args)
