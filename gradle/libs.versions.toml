@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.4.20"
-kn-clang = "0.0.5"
+kn-clang = "0.0.7"
 vanniktech-maven-publish = "0.34.0"
 dokka = "2.0.0"
 

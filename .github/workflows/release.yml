@@ -73,30 +73,14 @@ jobs:
       # Pre-publish gate: jvmTest must be 25/25 and linuxX64Test must
       # be 18/18 green. Anything less aborts the release.
       #
-      # KGP 2.4.20's `downloadKonan` task is broken on a fresh runner:
-      # it points at `kotlin-native-linux-x86_64-2.4.20.tar.gz`, but
-      # the 2.4.20 GitHub release only ships the prebuilt-renamed
-      # asset (`kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz`),
-      # so the bundled task 404s. We pre-populate `~/.konan/` from the
-      # correct asset here and skip `downloadKonan` entirely; the
-      # downstream `downloadKonanToolchain*` tasks use a separate
-      # (toolchain) path and still work as expected.
-      - name: Pre-fetch Kotlin/Native distribution
-        run: |
-          set -euo pipefail
-          KONAN_VERSION="2.4.20"
-          KONAN_DIR="$HOME/.konan/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}"
-          if [ ! -d "${KONAN_DIR}/konan" ]; then
-            echo "Downloading kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz"
-            mkdir -p "${KONAN_DIR}"
-            curl -fsSL \
-              "https://github.com/JetBrains/kotlin/releases/download/v${KONAN_VERSION}/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz" \
-              | tar -xz --strip-components=1 -C "${KONAN_DIR}"
-          fi
-          ls "${KONAN_DIR}/konan/konan.properties"
-
+      # kn-clang 0.0.7's `downloadKonan` task already pulls the correct
+      # `kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz` asset
+      # (the legacy non-`-prebuilt` URL 404s for 2.4.20+), and the
+      # `downloadKonanToolchain*` tasks chain automatically. Earlier
+      # versions (≤0.0.6) had to be worked around with a manual
+      # pre-fetch step; that hack is no longer needed.
       - name: Run JVM and native tests
-        run: ./gradlew downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 jvmTest linuxX64Test --stacktrace -x downloadKonan
+        run: ./gradlew downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 jvmTest linuxX64Test --stacktrace
 
       - name: Publish to Maven Central
         env:
