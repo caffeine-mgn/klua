@@ -72,8 +72,15 @@ jobs:
 
       # Pre-publish gate: jvmTest must be 25/25 and linuxX64Test must
       # be 18/18 green. Anything less aborts the release.
+      #
+      # The three leading `downloadKonan*` tasks materialise the
+      # Kotlin/Native distribution + cross-toolchains BEFORE
+      # clangBuildDynamic runs. Without them the linux_arm64 and
+      # mingw_x64 dynamic-lib tasks try to invoke host clang before
+      # ~/.konan exists on a fresh runner and fail with
+      # "Cannot find kotlin-native-prebuilt-linux-x86_64-N.N/konan/konan.properties".
       - name: Run JVM and native tests
-        run: ./gradlew jvmTest linuxX64Test --stacktrace
+        run: ./gradlew downloadKonan downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 jvmTest linuxX64Test --stacktrace
 
       - name: Publish to Maven Central
         env:
