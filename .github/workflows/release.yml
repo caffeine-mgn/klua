@@ -73,22 +73,25 @@ jobs:
       # Pre-publish gate: jvmTest must be 25/25 and linuxX64Test must
       # be 18/18 green. Anything less aborts the release.
       #
-      # Two-phase download is intentional: kn-clang 0.0.7's
+      # Three-phase download is intentional: kn-clang 0.0.7's
       # `downloadKonanToolchainLinux_arm64` task synchronously
       # checks for `konan/konan.properties` and throws if the host
-      # distribution hasn't been unpacked yet. When both
-      # `downloadKonan` and `downloadKonanToolchain*` are passed on
-      # the same gradle invocation, gradle parallelizes them and the
-      # toolchain task races ahead, failing with "Cannot find
-      # .../konan.properties". Splitting into a separate
-      # `downloadKonan` invocation guarantees completion before
-      # tests start.
+      # distribution hasn't been unpacked yet. Gradle parallelizes
+      # all tasks listed in one invocation, so even splitting out
+      # `downloadKonanToolchain*` into a separate step is not enough
+      # — both `downloadKonan` and `downloadKonanToolchain*` need
+      # to each be their own gradle invocation, in order, so the
+      # toolchain precondition sees the freshly-unpacked
+      # konan.properties.
       #
-      # kn-clang 0.0.7's `downloadKonan` task already pulls the
-      # correct `kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz`
-      # asset (the legacy non-`-prebuilt` URL 404s for 2.4.20+).
-      - name: Pre-fetch Kotlin/Native
-        run: ./gradlew downloadKonan downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 --stacktrace
+      # kn-clang 0.0.7's `downloadKonan` task pulls the correct
+      # `kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz` asset
+      # (the legacy non-`-prebuilt` URL 404s for 2.4.20+).
+      - name: Pre-fetch host Kotlin/Native
+        run: ./gradlew downloadKonan --stacktrace
+
+      - name: Pre-fetch cross toolchains
+        run: ./gradlew downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 --stacktrace
 
       - name: Run JVM and native tests
         run: ./gradlew jvmTest linuxX64Test --stacktrace
