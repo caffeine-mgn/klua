@@ -1,2 +1,9 @@
 hs_err_pid*.log
 core.*
+.gradle/
+build/
+buildSrc/.gradle/
+buildSrc/build/
+.kotlin/
+.idea/
+.veai/

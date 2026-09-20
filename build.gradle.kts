@@ -3,28 +3,26 @@ import pw.binom.kotlin.clang.clangBuildDynamic
 import pw.binom.kotlin.clang.clangBuildStatic
 import pw.binom.kotlin.clang.compileTaskName
 import pw.binom.kotlin.clang.eachNative
-import pw.binom.publish.allTargets
-import pw.binom.publish.binom
-import pw.binom.publish.dependsOn
-import pw.binom.publish.ifNotMac
-import pw.binom.publish.plugins.*
+import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.kotlin.konan.target.KonanTarget
+import java.util.Base64
 
 plugins {
-    id("org.jetbrains.kotlin.multiplatform")
-    id("maven-publish")
-    id("pw.binom.kn-clang") version "0.0.5"
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kn.clang)
+    alias(libs.plugins.dokka)
+    alias(libs.plugins.vanniktech.maven.publish)
 }
 
 allprojects {
-    version = System.getenv("GITHUB_REF_NAME") ?: "1.0.0-SNAPSHOT"
-    group = "pw.binom"
-
     repositories {
-        binom()
         mavenLocal()
         mavenCentral()
+        gradlePluginPortal()
     }
+
+    version = System.getenv("GITHUB_REF_NAME") ?: "1.0.0-SNAPSHOT"
+    group = "pw.binom"
 }
 
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
@@ -196,15 +194,17 @@ kotlin {
         val posixTest by creating {
             dependsOn(commonTest)
         }
-        dependsOn("linux*Main", posixMain)
-        dependsOn("androidNative*Main", posixMain)
-        dependsOn("mingw*Main", posixMain)
-        dependsOn("macos*Main", posixMain)
-
-        dependsOn("linux*Test", posixTest)
-        dependsOn("androidNative*Test", posixTest)
-        dependsOn("mingw*Test", posixTest)
-        dependsOn("macos*Test", posixTest)
+        // Wire the per-target POSIX source sets (linux*, androidNative*,
+        // mingw*, macos*) onto the shared posixMain / posixTest hierarchy.
+        // The binom-publish plugin used to expose a `dependsOn(mask, to)`
+        // extension for this; we replace it with a simple wildcard helper
+        // because binom-publish is no longer on the classpath.
+        listOf("linux", "androidNative", "mingw", "macos").forEach { family ->
+            sourceSets.matching { it.name.startsWith(family) && it.name.endsWith("Main") }
+                .configureEach { dependsOn(posixMain) }
+            sourceSets.matching { it.name.startsWith(family) && it.name.endsWith("Test") }
+                .configureEach { dependsOn(posixTest) }
+        }
 
         val jvmMain by getting {
             dependencies {
@@ -227,23 +227,96 @@ kotlin {
     }
 }
 
-// val c = clangBuildStatic(target = org.jetbrains.kotlin.konan.target.KonanTarget.WASM32, name = "lua") {
-//    compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
-//    compileDir(
-//        sourceDir = LUA_SOURCES_DIR,
-//    )
-// }
+mavenPublishing {
+    publishToMavenCentral(automaticRelease = true)
+    signAllPublications()
 
-// JS / WASM build pipeline disabled (Config.JS_TARGET_SUPPORT = false).
-// Original implementation removed; see git history if you need to revive it.
-apply<pw.binom.publish.plugins.PrepareProject>()
-
-extensions.getByType(pw.binom.publish.plugins.PublicationPomInfoExtension::class).apply {
-    useApache2License()
-    gitScm("https://github.com/caffeine-mgn/klua")
-    author(
-        id = "subochev",
-        name = "Anton Subochev",
-        email = "caffeine.mgn@gmail.com"
+    coordinates(
+        groupId = "pw.binom",
+        artifactId = "klua",
+        version = project.version.toString(),
     )
+
+    pom {
+        name.set("klua")
+        description.set("Lua 5.4 for Kotlin Multiplatform via JNI on JVM and Kotlin/Native on POSIX/Android targets")
+        url.set("https://github.com/caffeine-mgn/klua")
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            }
+        }
+        developers {
+            developer {
+                id.set("subochev")
+                name.set("Anton Subochev")
+                email.set("caffeine.mgn@gmail.com")
+            }
+        }
+        scm {
+            connection.set("scm:git:git://github.com/caffeine-mgn/klua.git")
+            developerConnection.set("scm:git:ssh://git@github.com/caffeine-mgn/klua.git")
+            url.set("https://github.com/caffeine-mgn/klua")
+        }
+    }
+}
+
+/*
+ * Apply GPG signing to every Maven publication.
+ *
+ * Two modes, picked at configuration time by the `signingUseGpg`
+ * Gradle property:
+ *
+ *   signingUseGpg=true — the CI mode used by .github/workflows/release.yml.
+ *   The GPG private key is imported into the system keyring once at job
+ *   start, and we configure Gradle's `signing` extension to delegate to
+ *   the `gpg` binary via `useGpgCmd()`. Key name and passphrase come from
+ *   `signing.gnupg.keyName` / `signing.gnupg.passphrase` Gradle properties
+ *   (forwarded as `-P` flags from CI).
+ *
+ *   default (signingUseGpg unset) — local development mode. Read an
+ *   in-memory PGP key straight from Gradle properties without ever
+ *   touching the system keyring. Two property-naming conventions are
+ *   accepted:
+ *     - vanniktech standard: `signingInMemoryKey{,Id,Password,IsBase64}`;
+ *     - binom convention:    `binom.gpg.{private_key,key_id,password}`.
+ *   `signingInMemoryKey*` wins when both are present. The private key
+ *   value is assumed ASCII-armored with literal "\n" escapes (or
+ *   base64-encoded when `signingInMemoryKeyIsBase64=true`); either way
+ *   it is normalised into the real PGP block before being handed to
+ *   `useInMemoryPgpKeys`.
+ */
+pluginManager.withPlugin("signing") {
+    if (findProperty("signingUseGpg") == "true") {
+        extensions.configure<SigningExtension>("signing") {
+            useGpgCmd()
+        }
+        logger.lifecycle("[signing] Using system gpg via signing.gnupg.keyName=${findProperty("signing.gnupg.keyName")}")
+        return@withPlugin
+    }
+
+    val key = providers.gradleProperty("signingInMemoryKey").orNull
+        ?: providers.gradleProperty("binom.gpg.private_key").orNull
+    val keyId = providers.gradleProperty("signingInMemoryKeyId").orNull
+        ?: providers.gradleProperty("binom.gpg.key_id").orNull
+    val password = providers.gradleProperty("signingInMemoryKeyPassword").orNull
+        ?: providers.gradleProperty("binom.gpg.password").orNull
+    val isBase64 = providers.gradleProperty("signingInMemoryKeyIsBase64").orNull?.toBoolean() ?: false
+
+    if (key != null && keyId != null && password != null) {
+        val decodedKey = if (isBase64) {
+            String(Base64.getDecoder().decode(key))
+        } else {
+            // Both `signingInMemoryKey` and `binom.gpg.private_key` are
+            // typically stored as ASCII-armored with literal "\n" escapes;
+            // turn them into real newlines before handing to PGP.
+            key.replace("\\n", "\n")
+        }
+        logger.lifecycle("[signing] Using in-memory PGP key, length=${decodedKey.length}, isBase64=${isBase64}")
+        extensions.getByType(SigningExtension::class.java)
+            .useInMemoryPgpKeys(decodedKey, keyId, password)
+    } else {
+        logger.lifecycle("[signing] No in-memory PGP key configured; publications will be signed by the publishing plugin only.")
+    }
 }
