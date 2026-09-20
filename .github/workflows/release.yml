@@ -73,22 +73,33 @@ jobs:
       # Pre-publish gate: jvmTest must be 25/25 and linuxX64Test must
       # be 18/18 green. Anything less aborts the release.
       #
-      # Three-phase download is intentional: kn-clang 0.0.7's
-      # `downloadKonanToolchainLinux_arm64` task synchronously
-      # checks for `konan/konan.properties` and throws if the host
-      # distribution hasn't been unpacked yet. Gradle parallelizes
-      # all tasks listed in one invocation, so even splitting out
-      # `downloadKonanToolchain*` into a separate step is not enough
-      # — both `downloadKonan` and `downloadKonanToolchain*` need
-      # to each be their own gradle invocation, in order, so the
-      # toolchain precondition sees the freshly-unpacked
-      # konan.properties.
+      # Konan pre-fetch is done as a plain shell step (not via
+      # `./gradlew downloadKonan`): kn-clang 0.0.7's `downloadKonan`
+      # task is non-blocking on CI — it kicks off the unpacked
+      # download and returns within seconds even though the
+      # tarball hasn't finished downloading, leaving
+      # `~/.konan/.../konan/konan.properties` missing for
+      # downstream `downloadKonanToolchain*` tasks. Doing the
+      # download + extract here directly guarantees
+      # `konan.properties` exists before kn-clang's toolchain tasks
+      # try to read it.
       #
-      # kn-clang 0.0.7's `downloadKonan` task pulls the correct
-      # `kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz` asset
-      # (the legacy non-`-prebuilt` URL 404s for 2.4.20+).
-      - name: Pre-fetch host Kotlin/Native
-        run: ./gradlew downloadKonan --stacktrace
+      # The asset name is `kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz`
+      # (the legacy non-`-prebuilt` URL 404s on the v2.4.20 GitHub
+      # release).
+      - name: Pre-fetch Kotlin/Native
+        run: |
+          set -euo pipefail
+          KONAN_VERSION="2.4.20"
+          KONAN_DIR="$HOME/.konan/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}"
+          if [ ! -f "${KONAN_DIR}/konan/konan.properties" ]; then
+            echo "Downloading kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz"
+            mkdir -p "${KONAN_DIR}"
+            curl -fsSL \
+              "https://github.com/JetBrains/kotlin/releases/download/v${KONAN_VERSION}/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz" \
+              | tar -xz --strip-components=1 -C "${KONAN_DIR}"
+          fi
+          ls "${KONAN_DIR}/konan/konan.properties"
 
       - name: Pre-fetch cross toolchains
         run: ./gradlew downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 --stacktrace
