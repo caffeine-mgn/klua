@@ -11,27 +11,73 @@ use Kotlin/Native cinterop against the same sources built as a static library.
 
 ## Installation
 
+The library is published to Maven Central as `pw.binom:klua`.
+
 ```kotlin
 // build.gradle.kts
 plugins {
     kotlin("multiplatform") version "2.4.20"
 }
 
+repositories {
+    mavenCentral()
+}
+
 kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("pw.binom:klua:1.0.0-SNAPSHOT")
+                implementation("pw.binom:klua:<version>")
             }
         }
     }
 }
 ```
 
-The artifact is published to Maven Central. Native targets depend on the host
-being able to build the bundled Lua sources (a C toolchain is required); JVM
-extracts and loads the bundled shared library at runtime, no native toolchain
-needed at consumer build time.
+For pure-JVM projects (no Kotlin Multiplatform):
+
+```kotlin
+// build.gradle.kts
+plugins {
+    kotlin("jvm") version "2.4.20"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("pw.binom:klua-jvm:<version>")
+}
+```
+
+## Supported targets
+
+`pw.binom:klua` is a Kotlin Multiplatform library. The published artifacts are:
+
+| Artifact                               | Target                         |
+|----------------------------------------|--------------------------------|
+| `pw.binom:klua-jvm`                    | JVM (JDK 11+)                  |
+| `pw.binom:klua-linuxx64`               | Kotlin/Native Linux x86_64     |
+| `pw.binom:klua-linuxarm64`             | Kotlin/Native Linux AArch64    |
+| `pw.binom:klua-mingwx64`               | Kotlin/Native MinGW x86_64     |
+| `pw.binom:klua-macosx64`               | Kotlin/Native macOS x86_64     |
+| `pw.binom:klua-androidnativearm32`     | Kotlin/Native Android ARMv7    |
+| `pw.binom:klua-androidnativearm64`     | Kotlin/Native Android AArch64  |
+| `pw.binom:klua-androidnativex86`       | Kotlin/Native Android x86      |
+| `pw.binom:klua-androidnativex64`       | Kotlin/Native Android x86_64   |
+
+The JVM artifact bundles `libklua.so` / `klua.dylib` / `klua.dll` for Linux
+x86_64, Linux AArch64, MinGW x86_64, and the host macOS (extracted and loaded
+at runtime, no native toolchain required at consumer build time). All other
+host platforms extract the closest matching binary on a best-effort basis.
+Native artifacts link against a `liblua.a` baked into the klib by the
+`pw.binom.kn-clang` Gradle plugin, so the consumer does not need to build the
+bundled Lua sources.
+
+iOS, tvOS and watchOS targets are not yet published.
+
+## Quick start
 
 ## Quick start
 
