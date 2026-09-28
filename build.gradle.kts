@@ -32,6 +32,10 @@ allprojects {
 }
 
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
+// Shared execution-limits C core (custom allocator + instruction/timeout/cancel
+// hook). Compiled into every native backend: Kotlin/Native static lib and the
+// JNI dynamic libraries (JVM jar + Android AAR).
+val LIMITS_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/limits")
 val JNI_SOURCES_DIR = file("${buildFile.parentFile}/src/jvmMain/c")
 // Generated jniLibs tree packaged into the Android AAR: <abi>/libklua.so.
 val ANDROID_JNI_LIBS_DIR = layout.buildDirectory.dir("androidJniLibs")
@@ -78,8 +82,13 @@ kotlin {
         val buildLuaTask = clangBuildStatic(target = konanTarget, name = "lua") {
             konanVersion.set("2.4.20")
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
+            include(LUA_SOURCES_DIR)
+            include(LIMITS_SOURCES_DIR)
             compileDir(
                 sourceDir = LUA_SOURCES_DIR,
+            )
+            compileDir(
+                sourceDir = LIMITS_SOURCES_DIR,
             )
         }
         tasks.findByName(compileTaskName)?.dependsOn(buildLuaTask)
@@ -90,7 +99,7 @@ kotlin {
                     create("lua") {
                         defFile = project.file("src/nativeInterop/lua.def")
                         packageName = "platform.internal_lua"
-                        includeDirs.headerFilterOnly(LUA_SOURCES_DIR)
+                        includeDirs.headerFilterOnly(LUA_SOURCES_DIR, LIMITS_SOURCES_DIR)
                     }
                 }
             }
@@ -144,9 +153,11 @@ kotlin {
             konanVersion.set("2.4.20")
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3", "-fno-rtti")
             include(LUA_SOURCES_DIR)
+            include(LIMITS_SOURCES_DIR)
             if (jdkInclude.isNotEmpty()) include(File(jdkInclude))
             if (jdkIncludePlatform.isNotEmpty()) include(File(jdkIncludePlatform))
             compileDir(sourceDir = LUA_SOURCES_DIR)
+            compileDir(sourceDir = LIMITS_SOURCES_DIR)
             compileDir(sourceDir = JNI_SOURCES_DIR)
         }.also { dynamicTask ->
             // Cross-targets gracefully no-op when the host can't build them: llvm-as
@@ -201,7 +212,9 @@ kotlin {
             konanVersion.set("2.4.20")
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3", "-fno-rtti")
             include(LUA_SOURCES_DIR)
+            include(LIMITS_SOURCES_DIR)
             compileDir(sourceDir = LUA_SOURCES_DIR)
+            compileDir(sourceDir = LIMITS_SOURCES_DIR)
             compileDir(sourceDir = JNI_SOURCES_DIR)
         }
         tasks.register("copyAndroidKlua${target.name}", Copy::class.java) {

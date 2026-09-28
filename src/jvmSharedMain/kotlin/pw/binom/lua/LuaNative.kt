@@ -13,7 +13,16 @@ internal object LuaNative {
     private val nextCallbackId = AtomicInteger(1)
 
     external fun init()
-    external fun newState(): Long
+    /**
+     * Creates a bare Lua state with NO standard library loaded, configured with
+     * the given execution limits. Any limit may be `0`, meaning "unlimited".
+     *
+     * @param maxMemory maximum bytes the Lua allocator may hold (0 = unlimited)
+     * @param maxInstructions maximum Lua VM instructions per eval/call (0 = unlimited)
+     * @param timeoutMicros initial wall-clock deadline in microseconds (0 = none;
+     *        normally armed per-operation via [setLimitTimeout])
+     */
+    external fun newState(maxMemory: Long, maxInstructions: Long, timeoutMicros: Long): Long
     /**
      * Load every Lua 5.4 standard library (`base`, `package`, `coroutine`,
      * `table`, `io`, `os`, `string`, `math`, `utf8`, `debug`) into the
@@ -29,6 +38,21 @@ internal object LuaNative {
     external fun openLibs(state: Long)
     external fun openLibsMask(state: Long, mask: Int)
     external fun close(state: Long)
+
+    /** Arms the wall-clock deadline for the current execution (0 = disarmed). */
+    external fun setLimitTimeout(state: Long, timeoutMicros: Long)
+
+    /** Sets the cooperative cancellation flag checked by the limit hook. */
+    external fun setLimitCancel(state: Long, cancel: Boolean)
+
+    /** Clears the per-call instruction counter, cancellation flag and last reason. */
+    external fun resetLimits(state: Long)
+
+    /** Last limit reason (KLUA_REASON_*), 0 if none. */
+    external fun lastLimitReason(state: Long): Int
+
+    /** Bytes currently held by the Lua allocator (best effort). */
+    external fun usedMemory(state: Long): Long
 
     external fun getTop(state: Long): Int
     external fun setTop(state: Long, top: Int)

@@ -2,7 +2,8 @@ headers = lua.h \
 lualib.h \
 lauxlib.h \
 lapi.h \
-lgc.h
+lgc.h \
+klua_limits.h
 headerFilter = *.h
 ---
 #include "lapi.h"

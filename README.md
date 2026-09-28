@@ -51,6 +51,16 @@ dependencies {
 }
 ```
 
+For Android apps, depend on the Android library artifact (an AAR that bundles
+the prebuilt `libklua.so` for `arm64-v8a` and `x86_64`; `minSdk` 24):
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    implementation("pw.binom:klua-android:<version>")
+}
+```
+
 ## Supported targets
 
 `pw.binom:klua` is a Kotlin Multiplatform library. The published artifacts are:
@@ -62,10 +72,13 @@ dependencies {
 | `pw.binom:klua-linuxarm64`             | Kotlin/Native Linux AArch64    |
 | `pw.binom:klua-mingwx64`               | Kotlin/Native MinGW x86_64     |
 | `pw.binom:klua-macosx64`               | Kotlin/Native macOS x86_64     |
-| `pw.binom:klua-androidnativearm32`     | Kotlin/Native Android ARMv7    |
 | `pw.binom:klua-androidnativearm64`     | Kotlin/Native Android AArch64  |
-| `pw.binom:klua-androidnativex86`       | Kotlin/Native Android x86      |
 | `pw.binom:klua-androidnativex64`       | Kotlin/Native Android x86_64   |
+| `pw.binom:klua-android`                | Android library (AAR, ART/JVM) |
+
+The Android AAR is a standard `com.android.library` artifact (`minSdk` 24) that
+ships `libklua.so` for `arm64-v8a` and `x86_64`; it loads the native library via
+`System.loadLibrary("klua")`. 32-bit ABIs are not packaged.
 
 The JVM artifact bundles `libklua.so` / `klua.dylib` / `klua.dll` for Linux
 x86_64, Linux AArch64, MinGW x86_64, and the host macOS (extracted and loaded
@@ -113,6 +126,54 @@ LuaEngine().use { engine ->
     println(engine.eval("return double(21)")[0].checkedNumber()) // 42.0
 }
 ```
+
+## Sandboxing: libraries and limits
+
+A fresh `LuaEngine` is **bare** — no standard library is loaded, so `os`, `io`,
+`package` and `debug` are `nil`. Opt into a subset with `openLibs` or the
+constructor. `LuaLibrary.SAFE` (`base`, `coroutine`, `table`, `string`, `math`,
+`utf8`) is a good default for untrusted scripts; `LuaLibrary.ALL` restores the
+full library set.
+
+```kotlin
+LuaEngine(libraries = LuaLibrary.SAFE).use { engine ->
+    assert(engine.eval("return os")[0] is LuaValue.Nil)
+}
+```
+
+Precompiled bytecode is rejected by default: `eval` compiles text-only
+(`mode = "t"`) and the same restriction is applied to Lua's own `load` /
+`loadstring` / `loadfile` / `dofile`. Pass `allowBinaryChunks = true` only for
+trusted bytecode.
+
+Execution can be bounded per `eval`/`call` with `LuaLimits`. When a limit trips
+the operation throws `LuaLimitException`, whose `kind` is `INSTRUCTIONS`,
+`TIMEOUT`, `MEMORY` or `CANCELLED`. Limits are not swallowable by Lua's `pcall`.
+
+```kotlin
+import kotlin.time.Duration.Companion.milliseconds
+
+LuaEngine(
+    libraries = LuaLibrary.SAFE,
+    limits = LuaLimits(
+        maxInstructions = 1_000_000,
+        timeout = 250.milliseconds,
+        maxMemoryBytes = 16 * 1024 * 1024,
+    ),
+).use { engine ->
+    try {
+        engine.eval("while true do end")
+    } catch (e: LuaLimitException) {
+        println(e.kind) // INSTRUCTIONS (or TIMEOUT)
+    }
+}
+```
+
+`LuaLimits.UNLIMITED` (the default) disables every check. `engine.cancel()`
+cooperatively aborts a long-running eval from another thread and surfaces as
+`LuaLimitKind.CANCELLED`. The instruction hook runs every 10 000 VM
+instructions, so `maxInstructions` is accurate to within one period, and the
+memory counter includes Lua's internal structures (leave headroom).
 
 ## Exposing Kotlin objects to Lua
 

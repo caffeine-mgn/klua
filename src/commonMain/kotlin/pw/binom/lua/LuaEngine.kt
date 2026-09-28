@@ -2,12 +2,24 @@ package pw.binom.lua
 
 expect class LuaEngine(
     libraries: Set<LuaLibrary> = emptySet(),
+    limits: LuaLimits = LuaLimits.UNLIMITED,
     allowBinaryChunks: Boolean = false,
 ) : AutoCloseable {
     val closureAutoGcFunction: LuaValue.FunctionRef
     val userdataAutoGcFunction: LuaValue.FunctionRef
     fun eval(text: String): List<LuaValue>
     override fun close()
+
+    /**
+     * Requests cooperative cancellation of the eval/call currently running (or
+     * the next one, if none is running). Safe to call from another thread.
+     *
+     * The cancellation flag is reported to the running Lua code through the
+     * limit hook and surfaces as [LuaLimitException] with
+     * [LuaLimitKind.CANCELLED]. It is cleared at the start of every eval/call,
+     * and is a no-op when no limits/hook are active.
+     */
+    fun cancel()
 
     /**
      * Returns global variable by [name]

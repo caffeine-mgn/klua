@@ -2,18 +2,47 @@ package pw.binom.lua
 
 actual class LuaEngine actual constructor(
     libraries: Set<LuaLibrary>,
+    limits: LuaLimits,
     allowBinaryChunks: Boolean,
 ) : AutoCloseable {
 
-    internal val ll: LuaContext = LuaContext()
+    internal val ll: LuaContext = LuaContext(limits)
 
     private val allowBinaryChunks: Boolean = allowBinaryChunks
+    private val limits: LuaLimits = limits
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef()
     actual val userdataAutoGcFunction: LuaValue.FunctionRef = makeUserdataGcRef()
 
     init {
         openLibs(libraries)
+    }
+
+    /**
+     * Prepares the native limit control block for a top-level operation:
+     * releases queued cleaner unrefs, resets the per-call instruction counter,
+     * cancellation flag and last reason, and arms the wall-clock deadline.
+     */
+    private fun prepareLimits() {
+        ll.drainPendingUnrefs()
+        ll.resetLimits()
+        val timeout = limits.timeout
+        if (timeout != null) {
+            ll.setLimitTimeout(timeout.inWholeMicroseconds)
+        }
+    }
+
+    /**
+     * Throws [LuaLimitException] if the last native operation aborted because a
+     * limit (or cancellation) tripped. No-op otherwise.
+     */
+    private fun throwIfLimited() {
+        val kind = LuaLimitReason.kindOf(ll.lastLimitReason()) ?: return
+        throw LuaLimitException(kind, LuaLimitReason.message(kind))
+    }
+
+    actual fun cancel() {
+        ll.setLimitCancel(true)
     }
 
     private fun makeAutoGcRef(): LuaValue.FunctionRef {
@@ -97,7 +126,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun eval(text: String): List<LuaValue> {
-        ll.drainPendingUnrefs()
+        prepareLimits()
         val r = LuaNative.loadString(ll.state, text, !allowBinaryChunks)
         // Lua 5.4 loadStringx returns:
         //   LUA_OK=0, LUA_ERRSYNTAX=3, LUA_ERRMEM=4, LUA_ERRERR=5.
@@ -111,19 +140,33 @@ actual class LuaEngine actual constructor(
                 throw LuaException(msg ?: "Lua syntax error")
             }
             4 -> {
+                // A memory-limit trip surfaces here as LUA_ERRMEM; distinguish
+                // it from a genuine OOM via the control block's last reason.
                 val msg = LuaNative.toString(ll.state, -1)
                 LuaNative.pop(ll.state, 1)
+                throwIfLimited()
                 throw RuntimeException("Lua memory allocation error: ${msg ?: "<no message>"}")
             }
             5 -> throw LuaException("Lua error in error handler")
             else -> throw LuaException("Can't eval text \"$text\" (status=$r)")
         }
         val exitCode = LuaNative.pcall(ll.state, 0, -1, 0)
-        return pcallProcessing(ll, exitCode)
+        // pcallProcessing pops the results (or the error value) before it
+        // throws, so the stack is clean when we check the limit reason. A
+        // limit that trips inside a Lua `pcall` is caught by it, but the
+        // control block's reason stays set — hence the unconditional check.
+        val result = try {
+            pcallProcessing(ll, exitCode)
+        } catch (e: Throwable) {
+            throwIfLimited()
+            throw e
+        }
+        throwIfLimited()
+        return result
     }
 
     actual fun call(functionName: String, vararg args: LuaValue): List<LuaValue> {
-        ll.drainPendingUnrefs()
+        prepareLimits()
         LuaNative.getGlobal(ll.state, functionName)
         if (LuaNative.isNil(ll.state, -1)) {
             LuaNative.pop(ll.state, 1)
@@ -135,15 +178,29 @@ actual class LuaEngine actual constructor(
         }
         args.forEach { pushValue(ll.state, it) }
         val r = LuaNative.pcall(ll.state, args.size, -1, 0)
-        return pcallProcessing(ll, r)
+        val result = try {
+            pcallProcessing(ll, r)
+        } catch (e: Throwable) {
+            throwIfLimited()
+            throw e
+        }
+        throwIfLimited()
+        return result
     }
 
     actual fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue> {
-        ll.drainPendingUnrefs()
+        prepareLimits()
         pushValue(ll.state, value)
         args.forEach { pushValue(ll.state, it) }
         val r = LuaNative.pcall(ll.state, args.size, -1, 0)
-        return pcallProcessing(ll, r)
+        val result = try {
+            pcallProcessing(ll, r)
+        } catch (e: Throwable) {
+            throwIfLimited()
+            throw e
+        }
+        throwIfLimited()
+        return result
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {

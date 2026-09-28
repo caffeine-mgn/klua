@@ -7,12 +7,14 @@ import platform.internal_lua.*
 @OptIn(ExperimentalForeignApi::class)
 actual class LuaEngine actual constructor(
     libraries: Set<LuaLibrary>,
+    limits: LuaLimits,
     allowBinaryChunks: Boolean,
 ) : AutoCloseable {
 
-    internal val ll = LuaContext()
+    internal val ll = LuaContext(limits)
 
     private val allowBinaryChunks: Boolean = allowBinaryChunks
+    private val limits: LuaLimits = limits
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
         makeRef(LuaValue.FunctionValue(userdataGc))
@@ -23,17 +25,37 @@ actual class LuaEngine actual constructor(
         openLibs(libraries)
     }
 
-    actual override fun close() {
-        // Mirror the JVM contract: explicitly release the Lua state and
-        // unregister from the global registry so subsequent calls into the
-        // Cleaner's SafeRefList don't keep this engine's LuaContext alive
-        // forever. The Cleaner that backs the LuaContext wrapper remains
-        // as a safety net for callers who forget to close().
-        val s = ll.state
-        if (s != null) {
-            LuaContextRegistry.unregister(s)
-            lua_close(s)
+    /**
+     * Prepares the native limit control block for a top-level operation: resets
+     * the per-call instruction counter, cancellation flag and last reason, and
+     * arms the wall-clock deadline.
+     */
+    private fun prepareLimits() {
+        ll.resetLimits()
+        val timeout = limits.timeout
+        if (timeout != null) {
+            ll.setLimitTimeout(timeout.inWholeMicroseconds)
         }
+    }
+
+    /**
+     * Throws [LuaLimitException] if the last native operation aborted because a
+     * limit (or cancellation) tripped. No-op otherwise.
+     */
+    private fun throwIfLimited() {
+        val kind = LuaLimitReason.kindOf(ll.lastLimitReason()) ?: return
+        throw LuaLimitException(kind, LuaLimitReason.message(kind))
+    }
+
+    actual fun cancel() {
+        ll.setLimitCancel(true)
+    }
+
+    actual override fun close() {
+        // Releases the Lua state and the limit control block exactly once;
+        // the Cleaner that backs the LuaContext wrapper remains as a safety
+        // net for callers who forget to close().
+        ll.close()
     }
 
     actual operator fun get(name: String): LuaValue {
@@ -53,6 +75,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
+        prepareLimits()
         val r = luaL_loadbufferx(
             ll.state,
             text,
@@ -68,17 +91,33 @@ actual class LuaEngine actual constructor(
                 throw LuaException(msg ?: "Compile error")
             }
 
-            LUA_ERRMEM -> throw LuaException("LUA_ERRMEM")
+            LUA_ERRMEM -> {
+                throwIfLimited()
+                throw LuaException("LUA_ERRMEM")
+            }
+
             else -> throw LuaException("Can't eval text \"$text\"")
         }
         val exitCode = lua_pcall1(ll.state, 0, LUA_MULTRET, 0)
-        return pcallProcessing(ll, exitCode)
+        // pcallProcessing pops the results (or the error value) before it
+        // throws, so the stack is clean when the limit reason is checked. A
+        // limit that trips inside a Lua `pcall` is caught by it, but the
+        // control block's reason stays set — hence the unconditional check.
+        val result = try {
+            pcallProcessing(ll, exitCode)
+        } catch (e: Throwable) {
+            throwIfLimited()
+            throw e
+        }
+        throwIfLimited()
+        return result
     }
 
     actual fun call(
         functionName: String,
         vararg args: LuaValue,
     ): List<LuaValue> {
+        prepareLimits()
         lua_getglobal(ll.state, functionName)
         if (lua_isnil1(ll.state, -1)) {
             // Pop the nil pushed by lua_getglobal before throwing; the JVM
@@ -96,19 +135,34 @@ actual class LuaEngine actual constructor(
             ll.pushValue(it)
         }
         val exec = lua_pcall1(ll.state, args.size, LUA_MULTRET, 0)
-        return pcallProcessing(ll, exec)
+        val result = try {
+            pcallProcessing(ll, exec)
+        } catch (e: Throwable) {
+            throwIfLimited()
+            throw e
+        }
+        throwIfLimited()
+        return result
     }
 
     actual fun call(
         value: LuaValue,
         vararg args: LuaValue,
     ): List<LuaValue> {
+        prepareLimits()
         ll.pushValue(value)
         args.forEach {
             ll.pushValue(it)
         }
         val exec = lua_pcall1(ll.state, args.size, LUA_MULTRET, 0)
-        return pcallProcessing(ll, exec)
+        val result = try {
+            pcallProcessing(ll, exec)
+        } catch (e: Throwable) {
+            throwIfLimited()
+            throw e
+        }
+        throwIfLimited()
+        return result
     }
 
     /**

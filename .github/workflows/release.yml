@@ -70,8 +70,9 @@ jobs:
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           gpgconf --reload gpg-agent
 
-      # Pre-publish gate: jvmTest must be 25/25 and linuxX64Test must
-      # be 18/18 green. Anything less aborts the release.
+      # Pre-publish gate: jvmTest (JNI Lua path + limit control core) and
+      # linuxX64Test (Kotlin/Native Lua path) must be green. Anything less
+      # aborts the release.
       #
       # Konan pre-fetch is done as a plain shell step (not via
       # `./gradlew downloadKonan`): kn-clang 0.0.7's `downloadKonan`
@@ -106,6 +107,36 @@ jobs:
 
       - name: Run JVM and native tests
         run: ./gradlew jvmTest linuxX64Test --stacktrace
+
+      # Package the Android AAR and assert its native libraries are real
+      # Android/bionic binaries. A regression that links them against GLIBC
+      # (e.g. a host-target mix-up) produces a .so that loads on desktop but
+      # crashes on every device, so this gate runs before publishing.
+      - name: Build Android AAR and verify ABI
+        run: |
+          set -euo pipefail
+          ./gradlew assembleRelease --stacktrace
+          rm -rf /tmp/aar-so && mkdir -p /tmp/aar-so
+          unzip -o -q build/outputs/aar/klua-release.aar 'jni/*' -d /tmp/aar-so
+          export LC_ALL=C
+          fail=0
+          for so in /tmp/aar-so/jni/*/libklua.so; do
+            echo "== $so"
+            readelf -d "$so" | grep NEEDED || true
+            # glibc's SONAME is libc.so.6; bionic's is libc.so.
+            if readelf -d "$so" | grep -q 'libc\.so\.6'; then
+              echo "ERROR: $so links against glibc (libc.so.6), not an Android/bionic binary"
+              fail=1
+            fi
+            if ! readelf -d "$so" | grep -q 'libc\.so'; then
+              echo "ERROR: $so has no bionic libc.so dependency"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Repository hygiene (no build outputs tracked)
+        run: test "$(git ls-files | grep -cE '^(build|\.gradle)/')" = "0"
 
       - name: Publish to Maven Central
         env:

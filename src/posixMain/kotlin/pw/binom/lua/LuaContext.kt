@@ -1,15 +1,36 @@
 package pw.binom.lua
 
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.internal_lua.luaL_newstate
 import platform.internal_lua.luaL_openlibs
 import platform.internal_lua.lua_close
+import platform.internal_lua.klua_control
+import platform.internal_lua.klua_control_free
+import platform.internal_lua.klua_control_reason
+import platform.internal_lua.klua_control_reset
+import platform.internal_lua.klua_control_set_cancel
+import platform.internal_lua.klua_control_set_timeout
+import platform.internal_lua.klua_control_new
+import platform.internal_lua.klua_newstate
+import kotlin.concurrent.AtomicInt
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.createCleaner
+import kotlinx.cinterop.CPointer
 
 @OptIn(ExperimentalForeignApi::class, ExperimentalNativeApi::class)
-internal class LuaContext {
-    val state: LuaState = luaL_newstate() ?: throw RuntimeException("Can't create Lua State")
+internal class LuaContext(limits: LuaLimits = LuaLimits.UNLIMITED) {
+    // Native limit control block (allocator cap + instruction/timeout/cancel
+    // hook). Shared with the JNI backend through src/nativeMain/limits.
+    private val control: CPointer<klua_control> = klua_control_new(
+        limits.maxMemoryBytes ?: 0L,
+        limits.maxInstructions ?: 0L,
+        0L,
+    ) ?: throw RuntimeException("Can't allocate Lua limit control")
+
+    val state: LuaState = klua_newstate(control)
+        ?: run {
+            klua_control_free(control)
+            throw RuntimeException("Can't create Lua State")
+        }
 
     init {
         // A fresh Lua state is intentionally bare — no standard library is
@@ -18,9 +39,17 @@ internal class LuaContext {
         LuaContextRegistry.register(state, this)
     }
 
-    private val cleaner = createCleaner(state) {
-        LuaContextRegistry.unregister(it)
-        lua_close(it)
+    // Idempotent close shared by [close] and the Cleaner. The resources are
+    // bundled in a separate holder so the Cleaner's lambda is non-capturing
+    // (a Kotlin/Native requirement) and never references the LuaContext.
+    private val resources = LuaContextResources(state, control)
+
+    private val cleaner = createCleaner(resources) { res ->
+        if (res.closed.compareAndSet(0, 1)) {
+            LuaContextRegistry.unregister(res.state)
+            lua_close(res.state)
+            klua_control_free(res.control)
+        }
     }
 
     /**
@@ -38,11 +67,51 @@ internal class LuaContext {
     fun openStandardLibs() {
         luaL_openlibs(state)
     }
+
+    /** Releases the Lua state and the limit control block exactly once. */
+    fun close() {
+        if (resources.closed.compareAndSet(0, 1)) {
+            LuaContextRegistry.unregister(state)
+            lua_close(state)
+            klua_control_free(control)
+        }
+    }
+
+    /** Clears the per-call instruction counter, cancellation flag and last reason. */
+    fun resetLimits() {
+        klua_control_reset(control)
+    }
+
+    /** Arms the wall-clock deadline for the current execution (0 = disarmed). */
+    fun setLimitTimeout(timeoutMicros: Long) {
+        klua_control_set_timeout(control, timeoutMicros)
+    }
+
+    /** Sets the cooperative cancellation flag checked by the limit hook. */
+    fun setLimitCancel(cancel: Boolean) {
+        klua_control_set_cancel(control, if (cancel) 1 else 0)
+    }
+
+    /** Last limit reason (KLUA_REASON_*), 0 if none. */
+    fun lastLimitReason(): Int = klua_control_reason(control)
+}
+
+/**
+ * Owns the native resources of a [LuaContext] (Lua state + limit control
+ * block) together with an idempotency flag. Bundled into a single object so
+ * the `createCleaner` lambda below is non-capturing.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private class LuaContextResources(
+    val state: LuaState,
+    val control: CPointer<klua_control>,
+) {
+    val closed = AtomicInt(0)
 }
 
 /**
  * Global mapping from LuaState → LuaContext. Each LuaContext owns a unique
- * LuaState created by [luaL_newstate]; when the engine is created (and the
+ * LuaState created by [klua_newstate]; when the engine is created (and the
  * LuaContext created) we register it here so C-side closures (CLOSURE_FUNCTION,
  * closureGc, userdataGc) can recover the [LuaContext] from the state pointer
  * they're given without round-tripping through upvalues.
@@ -56,10 +125,6 @@ internal class LuaContext {
  */
 @OptIn(ExperimentalForeignApi::class)
 internal object LuaContextRegistry {
-    // The previous implementation used a single-slot Pair<state, ctx> that any
-    // second LuaEngine would silently overwrite, breaking every Kotlin callback
-    // dispatched for the first engine. A multi-slot map is required.
-    //
     // Concurrency: callback dispatch is single-threaded per engine on POSIX
     // (Lua 5.4's lua_State is not thread-safe), and engine construction is
     // typically serial in embeddings. Plain HashMap without explicit locking

@@ -18,8 +18,12 @@ internal class LuaContext {
     // the owner thread drains the queue at the start of its next Lua operation.
     private val pendingUnrefs = ConcurrentLinkedQueue<Int>()
 
-    constructor() {
-        statePtr = LuaNative.newState()
+    constructor(limits: LuaLimits = LuaLimits.UNLIMITED) {
+        statePtr = LuaNative.newState(
+            limits.maxMemoryBytes ?: 0L,
+            limits.maxInstructions ?: 0L,
+            0L,
+        )
         if (statePtr == 0L) throw RuntimeException("Can't create Lua State")
     }
 
@@ -114,6 +118,27 @@ internal class LuaContext {
         drainPendingUnrefs()
         pushValue(statePtr, value)
     }
+
+    /** Clears the per-call instruction counter, cancellation flag and last reason. */
+    internal fun resetLimits() {
+        LuaNative.resetLimits(statePtr)
+    }
+
+    /** Arms the wall-clock deadline for the current execution (0 = disarmed). */
+    internal fun setLimitTimeout(timeoutMicros: Long) {
+        LuaNative.setLimitTimeout(statePtr, timeoutMicros)
+    }
+
+    /** Sets the cooperative cancellation flag checked by the limit hook. */
+    internal fun setLimitCancel(cancel: Boolean) {
+        LuaNative.setLimitCancel(statePtr, cancel)
+    }
+
+    /** Last limit reason (KLUA_REASON_*), 0 if none. */
+    internal fun lastLimitReason(): Int = LuaNative.lastLimitReason(statePtr)
+
+    /** Bytes currently held by the Lua allocator (best effort). */
+    internal fun usedMemory(): Long = LuaNative.usedMemory(statePtr)
 
     fun readValue(index: Int, ref: Boolean = true): LuaValue {
         val abs = LuaNative.absIndex(statePtr, index)

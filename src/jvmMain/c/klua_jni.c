@@ -17,6 +17,7 @@
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
+#include "klua_limits.h"
 
 #define KLUA_TNONE          (-1)
 #define KLUA_TNIL           0
@@ -268,18 +269,68 @@ static int alloc_cclosure_id(JNIEnv* env, lua_State* L) {
 
 /* ---- State management ---- */
 
-JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_newState(JNIEnv* env, jclass cls) {
+JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_newState(JNIEnv* env, jclass cls, jlong maxMemory, jlong maxInstructions, jlong timeoutMicros) {
     (void)env; (void)cls;
     /*
      * Create a bare Lua state with NO standard library loaded. The embedder
      * opts into specific libraries by calling Java_pw_binom_lua_LuaNative_openLibs
      * (full luaL_openlibs) or one of the per-library functions. This avoids
      * leaking the dangerous os/io/package/debug libs to untrusted Lua source.
+     *
+     * The state is created through klua_newstate so its allocator enforces the
+     * optional memory cap and the limit hook (instruction cap / timeout /
+     * cancellation) is installed. Any of the limits may be 0/negative, meaning
+     * "unlimited".
      */
-    lua_State* L = luaL_newstate();
-    if (L == NULL) return 0;
+    klua_control* control = klua_control_new(
+        (long long)maxMemory,
+        (long long)maxInstructions,
+        (long long)timeoutMicros);
+    if (control == NULL) return 0;
+    lua_State* L = klua_newstate(control);
+    if (L == NULL) {
+        klua_control_free(control);
+        return 0;
+    }
     return lua_state_to_jlong(L);
 }
+
+static klua_control* klua_control_of(jlong statePtr) {
+    lua_State* L = jlong_to_lua_state(statePtr);
+    if (L == NULL) return NULL;
+    return *(klua_control**)lua_getextraspace(L);
+}
+
+/* Arms the wall-clock deadline for the current execution (0 = disarmed). */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_setLimitTimeout(JNIEnv* env, jclass cls, jlong statePtr, jlong timeoutMicros) {
+    (void)env; (void)cls;
+    klua_control_set_timeout(klua_control_of(statePtr), (long long)timeoutMicros);
+}
+
+/* Sets the cooperative cancellation flag checked by the limit hook. */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_setLimitCancel(JNIEnv* env, jclass cls, jlong statePtr, jboolean cancel) {
+    (void)env; (void)cls;
+    klua_control_set_cancel(klua_control_of(statePtr), cancel ? 1 : 0);
+}
+
+/* Clears the per-call counter, cancellation flag and last reason. */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_resetLimits(JNIEnv* env, jclass cls, jlong statePtr) {
+    (void)env; (void)cls;
+    klua_control_reset(klua_control_of(statePtr));
+}
+
+/* Last limit reason (KLUA_REASON_*), 0 if none. */
+JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_lastLimitReason(JNIEnv* env, jclass cls, jlong statePtr) {
+    (void)env; (void)cls;
+    return (jint)klua_control_reason(klua_control_of(statePtr));
+}
+
+/* Bytes currently held by the Lua allocator (best effort). */
+JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_usedMemory(JNIEnv* env, jclass cls, jlong statePtr) {
+    (void)env; (void)cls;
+    return (jlong)klua_control_used_memory(klua_control_of(statePtr));
+}
+
 
 /*
  * Load every standard library. Equivalent to the previous unconditional
@@ -337,7 +388,11 @@ JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_openLibsMask(JNIEnv* env, jcl
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_close(JNIEnv* env, jclass cls, jlong statePtr) {
     (void)env; (void)cls;
     lua_State* L = jlong_to_lua_state(statePtr);
-    if (L != NULL) lua_close(L);
+    if (L != NULL) {
+        klua_control* control = *(klua_control**)lua_getextraspace(L);
+        lua_close(L);
+        klua_control_free(control);
+    }
 }
 
 /* ---- Stack manipulation ---- */
