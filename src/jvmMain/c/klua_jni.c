@@ -293,6 +293,47 @@ JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_openLibs(JNIEnv* env, jclass 
     luaL_openlibs(L);
 }
 
+/*
+ * Order MUST match the LuaLibrary enum (and Lua's linit.c loadedlibs):
+ * bit i loads KLUA_LIBS[i]. Do not reorder without updating LuaLibrary.
+ */
+typedef struct {
+    const char* name;
+    lua_CFunction func;
+} klua_lib_entry;
+
+static const klua_lib_entry KLUA_LIBS[] = {
+    {LUA_GNAME,        luaopen_base},
+    {LUA_LOADLIBNAME,  luaopen_package},
+    {LUA_COLIBNAME,    luaopen_coroutine},
+    {LUA_TABLIBNAME,   luaopen_table},
+    {LUA_IOLIBNAME,    luaopen_io},
+    {LUA_OSLIBNAME,    luaopen_os},
+    {LUA_STRLIBNAME,   luaopen_string},
+    {LUA_MATHLIBNAME,  luaopen_math},
+    {LUA_UTF8LIBNAME,  luaopen_utf8},
+    {LUA_DBLIBNAME,    luaopen_debug},
+};
+
+#define KLUA_LIBS_COUNT ((int)(sizeof(KLUA_LIBS) / sizeof(KLUA_LIBS[0])))
+
+/*
+ * Load only the standard libraries selected by the bitmask: bit i corresponds
+ * to KLUA_LIBS[i] (i.e. the ordinal of LuaLibrary in Kotlin). This replaces the
+ * all-or-nothing luaL_openlibs() for embedders that must run untrusted Lua.
+ */
+JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_openLibsMask(JNIEnv* env, jclass cls, jlong statePtr, jint mask) {
+    (void)env; (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    int i;
+    for (i = 0; i < KLUA_LIBS_COUNT; i++) {
+        if (mask & (1 << i)) {
+            luaL_requiref(L, KLUA_LIBS[i].name, KLUA_LIBS[i].func, 1);
+            lua_pop(L, 1);
+        }
+    }
+}
+
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_close(JNIEnv* env, jclass cls, jlong statePtr) {
     (void)env; (void)cls;
     lua_State* L = jlong_to_lua_state(statePtr);
@@ -598,10 +639,11 @@ JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_setGlobal(JNIEnv* env, jclass
 
 /* ---- Load / call ---- */
 
-JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_loadString(JNIEnv* env, jclass cls, jlong statePtr, jstring s) {
+JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_loadString(JNIEnv* env, jclass cls, jlong statePtr, jstring s, jboolean textOnly) {
     lua_State* L = jlong_to_lua_state(statePtr);
     const char* c = (*env)->GetStringUTFChars(env, s, NULL);
-    int r = luaL_loadstring(L, c);
+    jsize len = (*env)->GetStringUTFLength(env, s);
+    int r = luaL_loadbufferx(L, c, (size_t)len, c, textOnly ? "t" : NULL);
     (*env)->ReleaseStringUTFChars(env, s, c);
     return r;
 }

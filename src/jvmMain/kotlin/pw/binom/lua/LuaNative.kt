@@ -21,11 +21,13 @@ internal object LuaNative {
      * NO library loaded; the embedder calls this to opt into the full
      * standard library when the Lua source is trusted.
      *
-     * For finer-grained control the embedder can call `openBase`/`openString`
-     * /etc. to load only the safe subset and avoid exposing `os`, `io`,
-     * `package`, and `debug`.
+     * For finer-grained control call [openLibsMask] with a bitmask of the
+     * libraries to load (bit `i` corresponds to `LuaLibrary` with ordinal
+     * `i`), so only a safe subset can be exposed while `os`, `io`, `package`,
+     * and `debug` stay absent.
      */
     external fun openLibs(state: Long)
+    external fun openLibsMask(state: Long, mask: Int)
     external fun close(state: Long)
 
     external fun getTop(state: Long): Int
@@ -82,7 +84,7 @@ internal object LuaNative {
     external fun getGlobal(state: Long, name: String)
     external fun setGlobal(state: Long, name: String)
 
-    external fun loadString(state: Long, s: String): Int
+    external fun loadString(state: Long, s: String, textOnly: Boolean): Int
     external fun pcall(state: Long, nargs: Int, nresults: Int, errfunc: Int): Int
     external fun traceback(state: Long, msg: String?, level: Int)
 

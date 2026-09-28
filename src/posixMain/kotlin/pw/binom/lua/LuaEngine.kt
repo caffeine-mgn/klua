@@ -5,15 +5,23 @@ import kotlinx.cinterop.StableRef
 import platform.internal_lua.*
 
 @OptIn(ExperimentalForeignApi::class)
-actual class LuaEngine actual constructor() : AutoCloseable {
+actual class LuaEngine actual constructor(
+    libraries: Set<LuaLibrary>,
+    allowBinaryChunks: Boolean,
+) : AutoCloseable {
 
     internal val ll = LuaContext()
+
+    private val allowBinaryChunks: Boolean = allowBinaryChunks
 
     actual val closureAutoGcFunction: LuaValue.FunctionRef =
         makeRef(LuaValue.FunctionValue(userdataGc))
     actual val userdataAutoGcFunction: LuaValue.FunctionRef =
         makeRef(LuaValue.FunctionValue(userdataGc))
 
+    init {
+        openLibs(libraries)
+    }
 
     actual override fun close() {
         // Mirror the JVM contract: explicitly release the Lua state and
@@ -45,7 +53,13 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
-        val r = luaL_loadstring(ll.state, text)
+        val r = luaL_loadbufferx(
+            ll.state,
+            text,
+            text.encodeToByteArray().size.toULong(),
+            "=(eval)",
+            if (allowBinaryChunks) null else "t",
+        )
         when (r) {
             0 -> {}
             LUA_ERRSYNTAX -> {
@@ -98,12 +112,35 @@ actual class LuaEngine actual constructor() : AutoCloseable {
     }
 
     /**
+     * POSIX implementation of [openLibs]. Loads only the selected [libraries]
+     * via [LuaContext.openLibs] (per-library `luaL_requiref`), mirroring the
+     * JVM `openLibsMask` path.
+     */
+    actual fun openLibs(libraries: Set<LuaLibrary>) {
+        ll.openLibs(libraries)
+        if (!allowBinaryChunks && LuaLibrary.BASE in libraries) {
+            installBinaryChunkGuard()
+        }
+    }
+
+    /**
      * POSIX implementation of [openStandardLibs]. Delegates to
      * [LuaContext.openStandardLibs] which invokes [luaL_openlibs] to load
      * every standard library into the engine's state.
      */
     actual fun openStandardLibs() {
         ll.openStandardLibs()
+        if (!allowBinaryChunks) {
+            installBinaryChunkGuard()
+        }
+    }
+
+    /**
+     * Installs [BINARY_CHUNK_GUARD_SCRIPT] so that Lua's own `load`/`loadfile`
+     * cannot accept precompiled bytecode when [allowBinaryChunks] is `false`.
+     */
+    private fun installBinaryChunkGuard() {
+        eval(BINARY_CHUNK_GUARD_SCRIPT)
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {

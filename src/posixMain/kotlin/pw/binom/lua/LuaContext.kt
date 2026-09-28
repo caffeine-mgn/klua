@@ -8,26 +8,27 @@ import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.createCleaner
 
 @OptIn(ExperimentalForeignApi::class, ExperimentalNativeApi::class)
-internal class LuaContext(safeMode: Boolean = false) {
+internal class LuaContext {
     val state: LuaState = luaL_newstate() ?: throw RuntimeException("Can't create Lua State")
 
     init {
-        // NOTE: a fresh Lua state is intentionally bare — no standard
-        // library is loaded by default. Call [LuaEngine.openStandardLibs]
-        // to opt into the full stdlib for trusted Lua source.
-        // The deprecated `safeMode` parameter is reserved for a future
-        // hard-coded safe subset (base/string/table/math/utf8); the JVM
-        // counterpart defaults to no-lib for parity until that's wired up.
-        if (safeMode) {
-            // TODO: load only base/string/table/math/utf8 via luaL_requiref
-            // when a clean API for picking individual libs lands.
-        }
+        // A fresh Lua state is intentionally bare — no standard library is
+        // loaded by default. Use [openLibs] (or [LuaEngine.openLibs]) to opt
+        // into a specific subset, or [openStandardLibs] for all of them.
         LuaContextRegistry.register(state, this)
     }
 
     private val cleaner = createCleaner(state) {
         LuaContextRegistry.unregister(it)
         lua_close(it)
+    }
+
+    /**
+     * Loads exactly the given [libraries] into this context's state via
+     * `luaL_requiref`, one library at a time.
+     */
+    fun openLibs(libraries: Set<LuaLibrary>) {
+        state.openLibs(libraries)
     }
 
     /**

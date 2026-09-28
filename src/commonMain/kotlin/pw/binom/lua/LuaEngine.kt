@@ -1,8 +1,9 @@
 package pw.binom.lua
 
-expect class LuaEngine : AutoCloseable {
-    constructor()
-
+expect class LuaEngine(
+    libraries: Set<LuaLibrary> = emptySet(),
+    allowBinaryChunks: Boolean = false,
+) : AutoCloseable {
     val closureAutoGcFunction: LuaValue.FunctionRef
     val userdataAutoGcFunction: LuaValue.FunctionRef
     fun eval(text: String): List<LuaValue>
@@ -75,17 +76,31 @@ expect class LuaEngine : AutoCloseable {
     fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue>
 
     /**
+     * Loads exactly the given [libraries] into this engine's state.
+     *
+     * A fresh [LuaEngine] is bare — no standard library is loaded by default.
+     * Passing [LuaLibrary.ALL] restores the full historical behaviour;
+     * [LuaLibrary.SAFE] loads the subset safe for untrusted scripts
+     * (`base`, `coroutine`, `table`, `string`, `math`, `utf8`). Both the
+     * `io`/`os`/`package`/`debug` globals and their `require` entries stay
+     * absent for any library not in the set.
+     */
+    fun openLibs(libraries: Set<LuaLibrary>)
+
+    /**
      * Loads every Lua 5.4 standard library into this engine's state.
      *
-     * A fresh [LuaEngine] is intentionally bare — NO standard library
-     * is loaded by default. Calling this method opts the engine into the
-     * full stdlib (`base`, `package`, `coroutine`, `table`, `io`, `os`,
-     * `string`, `math`, `utf8`, `debug`), which restores the historical
-     * behaviour for callers that trust the Lua source they run.
+     * Equivalent to [openLibs]`(`[LuaLibrary.ALL]`)`. A fresh [LuaEngine] is
+     * intentionally bare — NO standard library is loaded by default — so this
+     * method opts the engine into the full stdlib (`base`, `package`,
+     * `coroutine`, `table`, `io`, `os`, `string`, `math`, `utf8`, `debug`),
+     * which restores the historical behaviour for callers that trust the Lua
+     * source they run.
      *
-     * For untrusted Lua source, leave this un-called: the engine will
+     * For untrusted Lua source, prefer leaving this un-called: the engine will
      * then refuse any access to `os.execute`, `io.open`, `package.loadlib`,
      * `debug.*` with a "attempt to call a nil value (global 'os')" error.
      */
     fun openStandardLibs()
 }
+

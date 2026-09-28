@@ -1,11 +1,20 @@
 package pw.binom.lua
 
-actual class LuaEngine : AutoCloseable {
+actual class LuaEngine actual constructor(
+    libraries: Set<LuaLibrary>,
+    allowBinaryChunks: Boolean,
+) : AutoCloseable {
 
     internal val ll: LuaContext = LuaContext()
 
+    private val allowBinaryChunks: Boolean = allowBinaryChunks
+
     actual val closureAutoGcFunction: LuaValue.FunctionRef = makeAutoGcRef()
     actual val userdataAutoGcFunction: LuaValue.FunctionRef = makeUserdataGcRef()
+
+    init {
+        openLibs(libraries)
+    }
 
     private fun makeAutoGcRef(): LuaValue.FunctionRef {
         // The GC trampoline (klua_gc_trampoline in klua_jni.c) looks up the
@@ -37,14 +46,40 @@ actual class LuaEngine : AutoCloseable {
     }
 
     /**
+     * JVM implementation of [openLibs]. Calls [LuaNative.openLibsMask] with a
+     * bitmask built from the selected [libraries], so only those libraries are
+     * registered (and only for those does `require` find them).
+     */
+    actual fun openLibs(libraries: Set<LuaLibrary>) {
+        if (libraries.isNotEmpty()) {
+            val mask = libraries.fold(0) { acc, lib -> acc or lib.bit }
+            LuaNative.openLibsMask(ll.state, mask)
+        }
+        if (!allowBinaryChunks && LuaLibrary.BASE in libraries) {
+            installBinaryChunkGuard()
+        }
+    }
+
+    /**
      * JVM implementation of [openStandardLibs]. Calls [LuaNative.openLibs]
-     * which on the C side invokes [luaL_openlibs] to load every standard
-     * library into the state created by [newState].
+     * which on the C side invokes `luaL_openlibs` to load every standard
+     * library into the state created by [LuaNative.newState].
      *
      * See [openStandardLibs] in commonMain for the design rationale.
      */
     actual fun openStandardLibs() {
         LuaNative.openLibs(ll.state)
+        if (!allowBinaryChunks) {
+            installBinaryChunkGuard()
+        }
+    }
+
+    /**
+     * Installs [BINARY_CHUNK_GUARD_SCRIPT] so that Lua's own `load`/`loadfile`
+     * cannot accept precompiled bytecode when [allowBinaryChunks] is `false`.
+     */
+    private fun installBinaryChunkGuard() {
+        eval(BINARY_CHUNK_GUARD_SCRIPT)
     }
 
     actual operator fun get(name: String): LuaValue {
@@ -60,7 +95,7 @@ actual class LuaEngine : AutoCloseable {
     }
 
     actual fun eval(text: String): List<LuaValue> {
-        val r = LuaNative.loadString(ll.state, text)
+        val r = LuaNative.loadString(ll.state, text, !allowBinaryChunks)
         // Lua 5.4 loadStringx returns:
         //   LUA_OK=0, LUA_ERRSYNTAX=3, LUA_ERRMEM=4, LUA_ERRERR=5.
         // For 3 and 4 the runtime pushes an error message at the top of the
@@ -233,27 +268,7 @@ actual class LuaEngine : AutoCloseable {
 
     companion object {
         private const val PTR_SIZE = 8
-
-        /**
-         * Creates a [LuaEngine] with opt-in safe-mode standard library.
-         * When [safeMode] is `true`, only `base`/`string`/`table`/`math`/
-         * `utf8` are loaded — `os`, `io`, `package`, `debug`, `coroutine`
-         * stay sealed, so untrusted Lua cannot spawn processes, open
-         * files, dlopen shared libraries, or introspect runtime internals.
-         *
-         * `safeMode = false` (default) keeps the historical full
-         * `luaL_openlibs` behaviour via the zero-arg primary constructor.
-         */
-        // fun create(safeMode: Boolean): LuaEngine = LuaEngine(safeMode = safeMode)
     }
-
-    // NOTE: A safeMode entry point (open only base/string/table/math/utf8)
-    // would belong here as a secondary constructor, but Kotlin Multiplatform
-    // prohibits secondary constructors in actual classes that don't match
-    // an expect-side constructor. Adding it requires a breaking change to
-    // the expect class (primary constructor with safeMode parameter) OR a
-    // separate LuaEngineSafeMode subclass. Tracked in
-    // CODE_REVIEW_FINDINGS.md as E2 deferred.
 }
 
 internal fun pcallProcessing(ll: LuaContext, exeCode: Int): List<LuaValue> {
