@@ -1,7 +1,5 @@
 package pw.binom.lua
 
-import java.lang.ref.Cleaner
-
 actual class ObjectContainer actual constructor() {
 
     // closures map is intentionally a *separate* object (not just a field of

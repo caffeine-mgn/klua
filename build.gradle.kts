@@ -4,10 +4,15 @@ import pw.binom.kotlin.clang.clangBuildStatic
 import pw.binom.kotlin.clang.compileTaskName
 import pw.binom.kotlin.clang.eachNative
 import org.gradle.plugins.signing.SigningExtension
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import java.util.Base64
 
 plugins {
+    // AGP + KGP both come from the buildSrc buildscript classpath (see
+    // buildSrc/build.gradle.kts) so KGP's AndroidGradlePluginVersion detection
+    // can see AGP; hence the versionless plugin id here.
+    id("com.android.library")
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kn.clang)
     alias(libs.plugins.dokka)
@@ -17,6 +22,7 @@ plugins {
 allprojects {
     repositories {
         mavenLocal()
+        google()
         mavenCentral()
         gradlePluginPortal()
     }
@@ -27,6 +33,10 @@ allprojects {
 
 val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
 val JNI_SOURCES_DIR = file("${buildFile.parentFile}/src/jvmMain/c")
+// Generated jniLibs tree packaged into the Android AAR: <abi>/libklua.so.
+val ANDROID_JNI_LIBS_DIR = layout.buildDirectory.dir("androidJniLibs")
+// Copy tasks that populate ANDROID_JNI_LIBS_DIR; wired into AGP's preBuild below.
+val androidNativeCopyTasks = mutableListOf<TaskProvider<*>>()
 
 tasks.withType<Test>().configureEach {
     testLogging {
@@ -36,12 +46,15 @@ tasks.withType<Test>().configureEach {
 }
 kotlin {
     jvm()
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
     linuxX64()
     linuxArm64()
     mingwX64()
-    androidNativeArm32()
     androidNativeArm64()
-    androidNativeX86()
     androidNativeX64()
     macosX64()
 //    macosArm64()
@@ -173,6 +186,32 @@ kotlin {
         copyTask to srcFileName
     }
 
+    /*
+     * Android (ART/JVM) delivery: build the same Lua 5.4 + klua_jni.c sources as a
+     * dynamic library for each supported Android ABI via kn-clang (which carries
+     * the NDK toolchain/sysroot, including jni.h for the ANDROID family), then drop
+     * the outputs into the jniLibs tree AGP packages into the AAR.
+     */
+    val androidTargets = linkedMapOf(
+        KonanTarget.ANDROID_ARM64 to "arm64-v8a",
+        KonanTarget.ANDROID_X64 to "x86_64",
+    )
+    val androidCopyTasks = androidTargets.map { (target, abi) ->
+        val nativeTask = clangBuildDynamic(target = target, name = "klua") {
+            konanVersion.set("2.4.20")
+            compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3", "-fno-rtti")
+            include(LUA_SOURCES_DIR)
+            compileDir(sourceDir = LUA_SOURCES_DIR)
+            compileDir(sourceDir = JNI_SOURCES_DIR)
+        }
+        tasks.register("copyAndroidKlua${target.name}", Copy::class.java) {
+            from(nativeTask.dynamicFile)
+            rename { "libklua.so" }
+            into(ANDROID_JNI_LIBS_DIR.get().dir(abi))
+        }
+    }
+    androidNativeCopyTasks += androidCopyTasks
+
     sourceSets {
 
         val commonMain by getting {
@@ -206,12 +245,21 @@ kotlin {
                 .configureEach { dependsOn(posixTest) }
         }
 
+        val jvmSharedMain by creating {
+            dependsOn(commonMain)
+        }
+
         val jvmMain by getting {
+            dependsOn(jvmSharedMain)
             dependencies {
                 api("org.jetbrains.kotlin:kotlin-stdlib:${pw.binom.Versions.KOTLIN_VERSION}")
                 // luaj-jse removed; Lua is now provided by the bundled native library
                 // built from the same Lua 5.4 sources used by Kotlin/Native targets.
             }
+        }
+
+        val androidMain by getting {
+            dependsOn(jvmSharedMain)
         }
         tasks.named("jvmProcessResources", Copy::class.java).configure {
             dependsOn(jvmCopyTasks.values.map { it.first })
@@ -224,6 +272,28 @@ kotlin {
                 api(kotlin("test-junit"))
             }
         }
+    }
+}
+
+android {
+    namespace = "pw.binom.lua"
+    compileSdk = 35
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    sourceSets["main"].jniLibs.srcDir(ANDROID_JNI_LIBS_DIR)
+}
+
+afterEvaluate {
+    tasks.named("preBuild") {
+        dependsOn(androidNativeCopyTasks)
     }
 }
 

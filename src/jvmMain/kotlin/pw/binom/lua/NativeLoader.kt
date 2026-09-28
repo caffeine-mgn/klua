@@ -14,6 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+internal actual fun loadNativeLibrary() = NativeLoader.load()
+
 internal object NativeLoader {
 
     private const val VERSION = "1.2.0-debug"

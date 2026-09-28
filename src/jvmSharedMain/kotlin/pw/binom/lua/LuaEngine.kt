@@ -83,6 +83,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual operator fun get(name: String): LuaValue {
+        ll.drainPendingUnrefs()
         LuaNative.getGlobal(ll.state, name)
         val value = ll.readValue(-1, true)
         LuaNative.pop(ll.state, 1)
@@ -90,11 +91,13 @@ actual class LuaEngine actual constructor(
     }
 
     actual operator fun set(name: String, value: LuaValue) {
+        ll.drainPendingUnrefs()
         pushValue(ll.state, value)
         LuaNative.setGlobal(ll.state, name)
     }
 
     actual fun eval(text: String): List<LuaValue> {
+        ll.drainPendingUnrefs()
         val r = LuaNative.loadString(ll.state, text, !allowBinaryChunks)
         // Lua 5.4 loadStringx returns:
         //   LUA_OK=0, LUA_ERRSYNTAX=3, LUA_ERRMEM=4, LUA_ERRERR=5.
@@ -120,6 +123,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun call(functionName: String, vararg args: LuaValue): List<LuaValue> {
+        ll.drainPendingUnrefs()
         LuaNative.getGlobal(ll.state, functionName)
         if (LuaNative.isNil(ll.state, -1)) {
             LuaNative.pop(ll.state, 1)
@@ -135,6 +139,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue> {
+        ll.drainPendingUnrefs()
         pushValue(ll.state, value)
         args.forEach { pushValue(ll.state, it) }
         val r = LuaNative.pcall(ll.state, args.size, -1, 0)
@@ -142,6 +147,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
+        ll.drainPendingUnrefs()
         // Re-push the closure, then capture its pointer and store a stable registry
         // reference in that order — luaL_ref() POPS the value, so getting the pointer
         // afterwards would read the value below the just-pushed one.
@@ -152,6 +158,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef {
+        ll.drainPendingUnrefs()
         pushValue(ll.state, value)
         val ptr = LuaNative.toPointer(ll.state, -1)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
@@ -172,6 +179,7 @@ actual class LuaEngine actual constructor(
         // userdata disposal — without it, the mem entry would be stranded
         // for the lifetime of the Lua state (the same shape of leak that
         // hit createUserData(Any) before commit 595d8b4).
+        ll.drainPendingUnrefs()
         val underlying = value.value
         val mem = LuaNative.newUserdata(ll.state, PTR_SIZE)
         StaticRefs.store(mem, underlying)
@@ -188,6 +196,7 @@ actual class LuaEngine actual constructor(
         // remove. (Previously the code interned under a counter and then
         // stored again at the userdata address, which left a stale orphan
         // entry behind on every call and inflated StaticRefs.size.)
+        ll.drainPendingUnrefs()
         val mem = LuaNative.newUserdata(ll.state, PTR_SIZE)
         StaticRefs.store(mem, value)
         val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
@@ -197,6 +206,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun createACClosure(func: LuaFunction): LuaValue.UserData {
+        ll.drainPendingUnrefs()
         val callbackId = LuaNative.nextCallbackId()
         LuaNative.setCallback(callbackId, LuaCallbackBridge { ctx ->
             // __call metamethod: index 1 is the userdata (self), real args start at 2.

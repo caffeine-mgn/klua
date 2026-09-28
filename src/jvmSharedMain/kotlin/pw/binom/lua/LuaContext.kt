@@ -1,6 +1,8 @@
 package pw.binom.lua
 
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 internal class LuaContext {
     // Mutable because [close] nullifies it after [LuaNative.close] so that
@@ -8,6 +10,13 @@ internal class LuaContext {
     // can detect "engine already closed" and skip the call — accessing the
     // raw pointer after lua_close is undefined behaviour.
     private var statePtr: Long = 0L
+
+    // Cleaner actions run on a background daemon thread. Calling into Lua from
+    // there races with the owner thread's own Lua calls (e.g. a concurrent
+    // `luaL_unref` during `lua_load` corrupts the registry and crashes the
+    // process). So the cleaner only *enqueues* the registry refIds to release;
+    // the owner thread drains the queue at the start of its next Lua operation.
+    private val pendingUnrefs = ConcurrentLinkedQueue<Int>()
 
     constructor() {
         statePtr = LuaNative.newState()
@@ -37,32 +46,34 @@ internal class LuaContext {
      * doesn't grow unboundedly across many short-lived callbacks.
      */
     companion object {
-        private val wrappersByState = ConcurrentHashMap<Long, MutableList<LuaContext>>()
+        private val wrappersByState = ConcurrentHashMap<Long, MutableList<WeakReference<LuaContext>>>()
 
         internal fun wrap(statePtr: Long): LuaContext {
             val ctx = LuaContext(statePtr)
             wrappersByState
                 .computeIfAbsent(statePtr) { mutableListOf() }
-                .add(ctx)
-            // When the wrapper itself becomes phantom-reachable, remove it
-            // from the map so we don't accumulate dead entries.
-            LuaValue.REFCLEANER.register(ctx, WrapperCleanup(statePtr, ctx))
+                .add(WeakReference(ctx))
+            // When the wrapper itself becomes phantom-reachable, prune it from
+            // the map so we don't accumulate dead entries. The cleanup action
+            // must NOT capture the wrapper (it would then never become
+            // phantom-reachable, and the entry would never be pruned).
+            LuaValue.REFCLEANER.register(ctx, WrapperCleanup(statePtr))
             return ctx
         }
 
         private fun clearWrappersFor(statePtr: Long) {
             wrappersByState.remove(statePtr)?.forEach { wrapper ->
-                wrapper.statePtr = 0L
+                wrapper.get()?.let { it.statePtr = 0L }
             }
         }
 
         private class WrapperCleanup(
             private val statePtr: Long,
-            private val wrapper: LuaContext,
         ) : Runnable {
             override fun run() {
-                wrappersByState[statePtr]?.remove(wrapper)
-                if (wrappersByState[statePtr]?.isEmpty() == true) {
+                val wrappers = wrappersByState[statePtr] ?: return
+                wrappers.removeAll { it.get() == null }
+                if (wrappers.isEmpty()) {
                     wrappersByState.remove(statePtr)
                 }
             }
@@ -72,7 +83,35 @@ internal class LuaContext {
     val state: Long
         get() = statePtr
 
+    /**
+     * Called from the cleaner thread to hand a registry refId back for release.
+     * The actual `luaL_unref` happens on the owner thread in
+     * [drainPendingUnrefs], never here — Lua is not thread-safe.
+     */
+    internal fun deferUnref(refId: Int) {
+        pendingUnrefs.add(refId)
+    }
+
+    /**
+     * Releases any registry refs that cleaner actions queued, via [deferUnref].
+     * MUST be called on the thread that owns this context, at a point where no
+     * other Lua operation is in flight.
+     */
+    internal fun drainPendingUnrefs() {
+        if (pendingUnrefs.isEmpty()) return
+        val s = statePtr
+        if (s == 0L) {
+            pendingUnrefs.clear()
+            return
+        }
+        while (true) {
+            val refId = pendingUnrefs.poll() ?: break
+            LuaNative.unref(s, LUA_REGISTRYINDEX, refId)
+        }
+    }
+
     fun push(value: LuaValue) {
+        drainPendingUnrefs()
         pushValue(statePtr, value)
     }
 

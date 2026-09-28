@@ -1,7 +1,5 @@
 package pw.binom.lua
 
-import java.lang.ref.Cleaner
-
 actual sealed interface LuaValue {
     actual class FunctionValue(val callbackId: Int) : LuaValue {
         override fun toString(): kotlin.String = "function_value($callbackId)"
@@ -28,7 +26,7 @@ actual sealed interface LuaValue {
         // using a Cleaner). Instead it captures the (ll, refId) pair needed to
         // resolve the Lua userdata's memory address at run-time.
         @Suppress("unused")
-        private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
+        private val cleanable: RefCleanable = REFCLEANER.register(
             this,
             RefAction(ll, refId),
         )
@@ -114,7 +112,7 @@ actual sealed interface LuaValue {
         // Action captures only `ptr` (primitive) and a function reference to
         // `StaticRefs.dispose` — no `this`, no cycle.
         @Suppress("unused")
-        private val cleanable: Cleaner.Cleanable? =
+        private val cleanable: RefCleanable? =
             ptr?.let { p ->
                 REFCLEANER.register(this, LightUserDataAction(p))
             }
@@ -203,7 +201,7 @@ actual sealed interface LuaValue {
         // create a strong reference cycle and prevent the wrapper from ever
         // becoming phantom-reachable.
         @Suppress("unused")
-        private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
+        private val cleanable: RefCleanable = REFCLEANER.register(
             this,
             RefAction(ll, refId),
         )
@@ -298,7 +296,7 @@ actual sealed interface LuaValue {
         // Auto-clean the LUA_REGISTRYINDEX entry when the wrapper is GC'd.
         // See TableRef.cleanable for the rationale.
         @Suppress("unused")
-        private val cleanable: Cleaner.Cleanable = REFCLEANER.register(
+        private val cleanable: RefCleanable = REFCLEANER.register(
             this,
             RefAction(ll, refId),
         )
@@ -337,9 +335,10 @@ actual sealed interface LuaValue {
         private val refId: Int,
     ) : Runnable {
         override fun run() {
-            val statePtr = ll.state
-            if (statePtr == 0L) return
-            LuaNative.unref(statePtr, LUA_REGISTRYINDEX, refId)
+            // Runs on the cleaner thread — Lua is not thread-safe, so hand the
+            // refId to the owning context instead of calling luaL_unref here.
+            // The owner thread performs the actual unref at its next Lua op.
+            ll.deferUnref(refId)
         }
     }
 
@@ -376,11 +375,11 @@ actual sealed interface LuaValue {
 
     actual companion object {
         // JVM-side cleaner shared across all RefObject subclasses; each
-        // registers itself with a no-arg lambda that calls back into the
+        // registers itself with an action that calls back into the
         // instance. The cleaner itself runs on a daemon thread and does not
-        // prevent JVM shutdown.
-        @JvmField
-        val REFCLEANER: Cleaner = Cleaner.create()
+        // prevent JVM shutdown, and (unlike java.lang.ref.Cleaner) it works
+        // on Android below API 33.
+        internal val REFCLEANER: RefCleaner = RefCleaner
 
         actual fun of(value: Double): Number = Number(value)
         actual fun of(value: Long): LuaInt = LuaInt(value)

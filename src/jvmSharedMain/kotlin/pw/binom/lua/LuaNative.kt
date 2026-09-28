@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal object LuaNative {
 
     init {
-        NativeLoader.load()
+        loadNativeLibrary()
         init()
     }
 
