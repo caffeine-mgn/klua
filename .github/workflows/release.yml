@@ -42,6 +42,16 @@ jobs:
           java-version: 21
           distribution: temurin
 
+      # AGP needs an Android SDK with compileSdk 35 to build the klua-android
+      # AAR; the runner image's SDK may lag behind, so install the platform and
+      # build-tools explicitly.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-35
+            build-tools;35.0.0
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
