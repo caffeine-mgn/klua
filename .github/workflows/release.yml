@@ -44,15 +44,20 @@ jobs:
 
       # AGP needs an Android SDK with compileSdk 35 to build the klua-android
       # AAR; the runner image's SDK may lag behind, so install the platform and
-      # build-tools explicitly. `setup-android` provisions cmdline-tools and
-      # puts `sdkmanager` on PATH.
+      # build-tools explicitly. ubuntu-latest already provides the SDK and
+      # cmdline-tools, so we drive sdkmanager directly (the setup-android
+      # action is incompatible with the newer preinstalled sdkmanager 16.x).
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK platform and build-tools
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMGR="$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "$SDKMGR" ] || SDKMGR="$(command -v sdkmanager)"
+          echo "Using $SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
