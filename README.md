@@ -71,7 +71,7 @@ dependencies {
 | `pw.binom:klua-linuxx64`               | Kotlin/Native Linux x86_64     |
 | `pw.binom:klua-linuxarm64`             | Kotlin/Native Linux AArch64    |
 | `pw.binom:klua-mingwx64`               | Kotlin/Native MinGW x86_64     |
-| `pw.binom:klua-macosx64`               | Kotlin/Native macOS x86_64     |
+| `pw.binom:klua-macosarm64`             | Kotlin/Native macOS AArch64    |
 | `pw.binom:klua-androidnativearm64`     | Kotlin/Native Android AArch64  |
 | `pw.binom:klua-androidnativex64`       | Kotlin/Native Android x86_64   |
 | `pw.binom:klua-android`                | Android library (AAR, ART/JVM) |
@@ -80,17 +80,20 @@ The Android AAR is a standard `com.android.library` artifact (`minSdk` 24) that
 ships `libklua.so` for `arm64-v8a` and `x86_64`; it loads the native library via
 `System.loadLibrary("klua")`. 32-bit ABIs are not packaged.
 
-The JVM artifact bundles `libklua.so` / `klua.dylib` / `klua.dll` for Linux
-x86_64, Linux AArch64, MinGW x86_64, and the host macOS (extracted and loaded
-at runtime, no native toolchain required at consumer build time). All other
-host platforms extract the closest matching binary on a best-effort basis.
+The JVM artifact bundles `libklua.so` / `libklua.dylib` / `libklua.dll` for Linux
+x86_64, Linux AArch64, MinGW x86_64 and macOS Apple silicon (extracted and
+loaded at runtime, no native toolchain required at consumer build time). All
+other host platforms extract the closest matching binary on a best-effort
+basis; a JVM on 32-bit or Intel macOS, or on an OS without a bundled binary,
+fails at load time with an explicit "Native library not found" error.
 Native artifacts link against a `liblua.a` baked into the klib by the
 `pw.binom.kn-clang` Gradle plugin, so the consumer does not need to build the
 bundled Lua sources.
 
-iOS, tvOS and watchOS targets are not yet published.
-
-## Quick start
+iOS, tvOS and watchOS targets are not yet published. `macosx64` (Intel macOS)
+Kotlin/Native is not published either: it is deprecated upstream and the
+release host is an Apple silicon runner, so the supported Apple target is
+`macosArm64`.
 
 ## Quick start
 

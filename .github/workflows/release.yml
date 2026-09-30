@@ -243,7 +243,12 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew jvmJar --stacktrace
-          JAR="$(ls build/libs/klua-jvm-*.jar | head -1)"
+          JAR="$(find build -type f -name 'klua-jvm-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -1)"
+          if [ -z "$JAR" ]; then
+            echo "ERROR: no JVM jar found; jars under build/:"
+            find build -name '*.jar' | head -20
+            exit 1
+          fi
           echo "jar: $JAR"
           rm -rf /tmp/jar-payload && mkdir -p /tmp/jar-payload
           unzip -o -q "$JAR" -d /tmp/jar-payload
@@ -264,8 +269,43 @@ jobs:
           file /tmp/jar-payload/mingw_x64/libklua.dll     | grep -qE 'PE32|MS Windows' || { echo "ERROR: mingw_x64 payload is not a PE binary"; fail=1; }
           exit $fail
 
-      - name: Build Android AAR
-        run: ./gradlew assembleRelease --stacktrace
+      # The linux job gates an identically-built AAR, but the artifact that is
+      # actually uploaded comes from this host, so re-assert its ABI here. GNU
+      # readelf is absent on macOS (Homebrew's binutils ships it as `greadelf`),
+      # so resolve one from PATH, Homebrew, or the Konan LLVM toolchain.
+      - name: Build Android AAR and verify ABI
+        run: |
+          set -euo pipefail
+          ./gradlew assembleRelease --stacktrace
+          READELF="$(command -v readelf || command -v greadelf || command -v llvm-readelf || true)"
+          if [ -z "$READELF" ]; then
+            KONAN_READELF="$(ls -d "$HOME"/.konan/dependencies/llvm-*/bin/llvm-readelf 2>/dev/null | head -1 || true)"
+            if [ -n "$KONAN_READELF" ]; then
+              READELF="$KONAN_READELF"
+            else
+              brew install binutils >/dev/null
+              READELF="$(brew --prefix binutils)/bin/greadelf"
+            fi
+          fi
+          echo "readelf: $READELF"
+          rm -rf /tmp/aar-so && mkdir -p /tmp/aar-so
+          unzip -o -q build/outputs/aar/klua-release.aar 'jni/*' -d /tmp/aar-so
+          export LC_ALL=C
+          fail=0
+          for so in /tmp/aar-so/jni/*/libklua.so; do
+            echo "== $so"
+            "$READELF" -d "$so" | grep NEEDED || true
+            # glibc's SONAME is libc.so.6; bionic's is libc.so.
+            if "$READELF" -d "$so" | grep -q 'libc\.so\.6'; then
+              echo "ERROR: $so links against glibc (libc.so.6), not an Android/bionic binary"
+              fail=1
+            fi
+            if ! "$READELF" -d "$so" | grep -q 'libc\.so'; then
+              echo "ERROR: $so has no bionic libc.so dependency"
+              fail=1
+            fi
+          done
+          exit $fail
 
       - name: Repository hygiene (no build outputs tracked)
         run: test "$(git ls-files | grep -cE '^(build|\.gradle)/')" = "0"
