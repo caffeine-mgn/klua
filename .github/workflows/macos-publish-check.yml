@@ -17,8 +17,8 @@ on:
 
 env:
   KONAN_VERSION: "2.4.20"
-  # build.gradle.kts reads the project version from GITHUB_REF_NAME.
-  GITHUB_REF_NAME: "0.0.0-maccheck"
+  # Fixed version for the dry run (the real release takes it from the tag).
+  VERSION_OVERRIDE: "0.0.0-maccheck"
 
 jobs:
   macos-check:
@@ -91,13 +91,24 @@ jobs:
           gpgconf --reload gpg-agent
 
       - name: Run JVM and macOS native tests
-        run: ./gradlew jvmTest macosArm64Test --stacktrace
+        run: |
+          set -euo pipefail
+          ./gradlew jvmTest macosArm64Test -Pversion="$VERSION_OVERRIDE" --stacktrace
+          echo "== build/libs right after the test run =="
+          ls -la build/libs || true
 
       - name: Verify JVM jar carries every host native library
         run: |
           set -euo pipefail
-          ./gradlew jvmJar --stacktrace
-          JAR="$(ls build/libs/klua-jvm-*.jar | head -1)"
+          ./gradlew jvmJar -Pversion="$VERSION_OVERRIDE" --stacktrace
+          echo "== pwd =="; pwd
+          echo "== build/libs =="; ls -la build/libs || true
+          JAR="$(find build -type f -name 'klua-jvm-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -1)"
+          if [ -z "$JAR" ]; then
+            echo "ERROR: no JVM jar found; jars under build/:"
+            find build -name '*.jar' | head -20
+            exit 1
+          fi
           echo "jar: $JAR"
           rm -rf /tmp/jar-payload && mkdir -p /tmp/jar-payload
           unzip -o -q "$JAR" -d /tmp/jar-payload
@@ -119,14 +130,14 @@ jobs:
           exit $fail
 
       - name: Build Android AAR
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease -Pversion="$VERSION_OVERRIDE" --stacktrace
 
       - name: Publish to Maven Local (dry run of the release graph)
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
           GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
         run: |
-          ./gradlew publishToMavenLocal \
+          ./gradlew publishToMavenLocal -Pversion="$VERSION_OVERRIDE" \
             -PsigningUseGpg=true \
             -Psigning.gnupg.keyName="$GPG_KEY_ID" \
             -Psigning.gnupg.passphrase="$GPG_PASSWORD"

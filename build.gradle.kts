@@ -27,7 +27,10 @@ allprojects {
         gradlePluginPortal()
     }
 
-    version = System.getenv("GITHUB_REF_NAME") ?: "1.0.0-SNAPSHOT"
+    // Release tags drive the version; `-Pversion=` overrides it for dry runs.
+    version = providers.gradleProperty("version").orNull
+        ?: System.getenv("GITHUB_REF_NAME")
+        ?: "1.0.0-SNAPSHOT"
     group = "pw.binom"
 }
 
