@@ -132,6 +132,41 @@ jobs:
       - name: Build Android AAR
         run: ./gradlew assembleRelease -Pversion="$VERSION_OVERRIDE" --stacktrace
 
+      # The published AAR must contain real Android/bionic binaries. GNU readelf
+      # is absent on macOS (Homebrew's binutils ships it as `greadelf`), so
+      # resolve a readelf from PATH, Homebrew, or the Konan LLVM toolchain.
+      - name: Verify Android AAR native ABI (bionic, not glibc)
+        run: |
+          set -euo pipefail
+          READELF="$(command -v readelf || command -v greadelf || command -v llvm-readelf || true)"
+          if [ -z "$READELF" ]; then
+            KONAN_READELF="$(ls -d "$HOME"/.konan/dependencies/llvm-*/bin/llvm-readelf 2>/dev/null | head -1 || true)"
+            if [ -n "$KONAN_READELF" ]; then
+              READELF="$KONAN_READELF"
+            else
+              brew install binutils >/dev/null
+              READELF="$(brew --prefix binutils)/bin/greadelf"
+            fi
+          fi
+          echo "readelf: $READELF"
+          rm -rf /tmp/aar-so && mkdir -p /tmp/aar-so
+          unzip -o -q build/outputs/aar/klua-release.aar 'jni/*' -d /tmp/aar-so
+          export LC_ALL=C
+          fail=0
+          for so in /tmp/aar-so/jni/*/libklua.so; do
+            echo "== $so"
+            "$READELF" -d "$so" | grep NEEDED || true
+            if "$READELF" -d "$so" | grep -q 'libc\.so\.6'; then
+              echo "ERROR: $so links against glibc (libc.so.6), not an Android/bionic binary"
+              fail=1
+            fi
+            if ! "$READELF" -d "$so" | grep -q 'libc\.so'; then
+              echo "ERROR: $so has no bionic libc.so dependency"
+              fail=1
+            fi
+          done
+          exit $fail
+
       - name: Publish to Maven Local (dry run of the release graph)
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
