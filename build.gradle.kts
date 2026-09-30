@@ -60,8 +60,10 @@ kotlin {
     mingwX64()
     androidNativeArm64()
     androidNativeX64()
-    macosX64()
-//    macosArm64()
+    // macosX64 is deprecated since Kotlin 2.3.20 (scheduled for removal); the
+    // supported macOS target is macosArm64, and the GitHub macOS runner is
+    // arm64-only anyway.
+    macosArm64()
 //    ios()
 //    iosArm32()
 //    iosArm64()
@@ -143,7 +145,16 @@ kotlin {
             "/usr/lib/jvm/default-java/include",
         )
         val jdkInclude = jdkIncludeCandidates.firstOrNull { File(it).exists() } ?: ""
+        // Target-specific jni_md.h. On a native host it comes from the JDK
+        // itself ($JAVA_HOME/include/<platform>). When cross-compiling the JVM
+        // native library — e.g. building the linux/mingw variants on the macOS
+        // "universal host" CI runner — the target headers are not in the local
+        // JDK, so CI pre-populates build/jni-include/<platform>/jni_md.h. Only
+        // jni_md.h is platform-specific; jni.h itself is shared and comes from
+        // the host JDK.
+        val jniHeaderOverride = layout.buildDirectory.dir("jni-include/$platform").get().asFile
         val jdkIncludePlatformCandidates = listOfNotNull(
+            jniHeaderOverride.takeIf { File(it, "jni_md.h").exists() }?.absolutePath,
             jdkHome?.let { "$it/include/$platform" },
             "/usr/lib/jvm/java-21-openjdk/include/$platform",
             "/usr/lib/jvm/default-java/include/$platform",

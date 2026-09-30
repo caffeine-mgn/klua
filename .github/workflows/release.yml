@@ -1,24 +1,32 @@
-# Tag-triggered: any pushed tag of the form N.N.N (or N.N.N-suffix) starts
-# a Sonatype Central publish. Workflow expects GITHUB_REF_NAME to be the
-# tag itself so build.gradle.kts can pick it up as the project version.
+# Tag-triggered: any pushed tag of the form N.N.N (or N.N.N-suffix) starts a
+# Sonatype Central publish. The workflow expects GITHUB_REF_NAME to be the tag
+# itself so build.gradle.kts can pick it up as the project version.
 #
-# Conventions mirror the rest of the caffeine-mgn/* repos (ksqlite,
-# kdns, kn-clang-compiler-plugin): `ubuntu-latest` runner, GPG key
-# imported into the system keyring once at job start, the
-# `signingUseGpg` flag in build.gradle.kts flips the build over to
-# `useGpgCmd()`, and the Sonatype user token plus GPG key id /
-# passphrase are forwarded as `-PmavenCentral*` / `-Psigning.gnupg.*`
-# Gradle properties.
+# Two jobs:
 #
-# JDK distribution is intentionally `temurin` (Adoptium OpenJDK 21),
-# not Liberica: this project's JVM JNI binding crashes inside
-# `getgeneric` under Liberica 21.0.6, and OpenJDK 21.0.11+ is the
-# supported test/production runtime.
+#   test (ubuntu-latest) — the fast gate. Runs jvmTest (JNI Lua path),
+#     linuxX64Test (Kotlin/Native Lua path) and the Android AAR build with its
+#     readelf/bionic ABI gate. A linuxX64 test binary cannot be executed on
+#     macOS, so Linux coverage lives here.
 #
-# Tests are run as a pre-publish gate. jvmTest is the cheap JVM-side
-# coverage; linuxX64Test exercises the Kotlin/Native Lua path. Both
-# are required to be green before any commit is considered complete
-# (see klua project memory).
+#   publish (macos-14) — the release host. macOS is the only Kotlin/Native host
+#     that can build the Apple targets (macosArm64), and it can also
+#     cross-build *every* other target (linuxX64/linuxArm64, mingwX64,
+#     androidNative*, the Android AAR) once the target jni_md.h headers are
+#     provided. That keeps the whole publication in a single Sonatype Central
+#     deployment. It runs jvmTest + macosArm64Test, verifies the JVM jar
+#     carries every host native library, and publishes.
+#
+# Conventions mirror the rest of the caffeine-mgn/* repos (ksqlite, kdns,
+# kn-clang-compiler-plugin): the GPG key is imported into the system keyring
+# once at job start, `signingUseGpg` flips the build over to `useGpgCmd()`,
+# and the Sonatype user token plus GPG key id/passphrase are forwarded as
+# `-PmavenCentral*` / `-Psigning.gnupg.*` Gradle properties.
+#
+# JDK distribution is intentionally `temurin` (Adoptium OpenJDK 21), not
+# Liberica: this project's JVM JNI binding crashes inside `getgeneric` under
+# Liberica 21.0.6, and OpenJDK 21.0.11+ is the supported test/production
+# runtime.
 
 name: Release to Maven Central
 
@@ -28,8 +36,14 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
 
+env:
+  KONAN_VERSION: "2.4.20"
+
 jobs:
-  publish:
+  # ---------------------------------------------------------------------------
+  # Linux gate: the only host that can *run* the Linux Kotlin/Native tests.
+  # ---------------------------------------------------------------------------
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -62,53 +76,28 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # klua links Lua 5.4 (src/nativeMain/lua/*.c) into every native
-      # klib via clangBuildStatic, and on the JVM clangBuildDynamic
-      # produces the .so that NativeLoader extracts at runtime. Linux
-      # toolchain packages are needed for both: gcc/clang for the
+      # klua links Lua 5.4 (src/nativeMain/lua/*.c) into every native klib via
+      # clangBuildStatic, and on the JVM clangBuildDynamic produces the .so
+      # that NativeLoader extracts at runtime. gcc/clang are needed for the
       # plugin and mingw-w64 for the cross-compiled Windows .dll.
       - name: Install build prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc g++ clang mingw-w64
 
-      # The GPG private key is stored in GitHub secrets with literal
-      # `\n` escapes (one-line encoding). `printf '%b'` interprets
-      # those escapes; the import is non-interactive
-      # (`--batch --pinentry-mode loopback`) and we let the agent know
-      # it's allowed to use the loopback pinentry.
-      - name: Import GPG key
-        env:
-          GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSWORD }}
-        run: |
-          printf '%b' "$GPG_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          gpgconf --reload gpg-agent
-
-      # Pre-publish gate: jvmTest (JNI Lua path + limit control core) and
-      # linuxX64Test (Kotlin/Native Lua path) must be green. Anything less
-      # aborts the release.
-      #
-      # Konan pre-fetch is done as a plain shell step (not via
-      # `./gradlew downloadKonan`): kn-clang 0.0.7's `downloadKonan`
-      # task is non-blocking on CI — it kicks off the unpacked
-      # download and returns within seconds even though the
-      # tarball hasn't finished downloading, leaving
-      # `~/.konan/.../konan/konan.properties` missing for
-      # downstream `downloadKonanToolchain*` tasks. Doing the
-      # download + extract here directly guarantees
-      # `konan.properties` exists before kn-clang's toolchain tasks
-      # try to read it.
+      # Konan pre-fetch is done as a plain shell step (not via `./gradlew
+      # downloadKonan`): kn-clang 0.0.7's `downloadKonan` task is non-blocking
+      # on CI — it kicks off the unpacked download and returns within seconds
+      # even though the tarball hasn't finished downloading, leaving
+      # `~/.konan/.../konan/konan.properties` missing for downstream
+      # `downloadKonanToolchain*` tasks. Doing the download + extract here
+      # directly guarantees `konan.properties` exists first.
       #
       # The asset name is `kotlin-native-prebuilt-linux-x86_64-2.4.20.tar.gz`
-      # (the legacy non-`-prebuilt` URL 404s on the v2.4.20 GitHub
-      # release).
+      # (the legacy non-`-prebuilt` URL 404s on the v2.4.20 GitHub release).
       - name: Pre-fetch Kotlin/Native
         run: |
           set -euo pipefail
-          KONAN_VERSION="2.4.20"
           KONAN_DIR="$HOME/.konan/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}"
           if [ ! -f "${KONAN_DIR}/konan/konan.properties" ]; then
             echo "Downloading kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz"
@@ -122,7 +111,7 @@ jobs:
       - name: Pre-fetch cross toolchains
         run: ./gradlew downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 --stacktrace
 
-      - name: Run JVM and native tests
+      - name: Run JVM and Linux native tests
         run: ./gradlew jvmTest linuxX64Test --stacktrace
 
       # Package the Android AAR and assert its native libraries are real
@@ -151,6 +140,132 @@ jobs:
             fi
           done
           exit $fail
+
+  # ---------------------------------------------------------------------------
+  # Publish: macOS universal host (Apple + every cross target), one Central
+  # deployment.
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: test
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+
+      - name: Set up Android SDK
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMGR="$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "$SDKMGR" ] || SDKMGR="$(command -v sdkmanager)"
+          echo "Using $SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Same rationale as the Linux job, with the macOS arm64 asset. The
+      # extracted directory name must match Konan's host expectation
+      # (`kotlin-native-prebuilt-macos-aarch64-<ver>`).
+      - name: Pre-fetch Kotlin/Native (macOS arm64)
+        run: |
+          set -euo pipefail
+          KONAN_DIR="$HOME/.konan/kotlin-native-prebuilt-macos-aarch64-${KONAN_VERSION}"
+          if [ ! -f "${KONAN_DIR}/konan/konan.properties" ]; then
+            echo "Downloading kotlin-native-prebuilt-macos-aarch64-${KONAN_VERSION}.tar.gz"
+            mkdir -p "${KONAN_DIR}"
+            curl -fsSL \
+              "https://github.com/JetBrains/kotlin/releases/download/v${KONAN_VERSION}/kotlin-native-prebuilt-macos-aarch64-${KONAN_VERSION}.tar.gz" \
+              | tar -xz --strip-components=1 -C "${KONAN_DIR}"
+          fi
+          ls "${KONAN_DIR}/konan/konan.properties"
+
+      # macOS is the host, so EVERY other target is a cross target here.
+      - name: Pre-fetch cross toolchains
+        run: >-
+          ./gradlew
+          downloadKonanToolchainLinux_x64
+          downloadKonanToolchainLinux_arm64
+          downloadKonanToolchainMingw_x64
+          --stacktrace
+
+      # Cross-building the JVM native library (clangBuildDynamic) for
+      # linux/mingw needs that platform's jni_md.h, which is not in the macOS
+      # JDK. Only jni_md.h is platform-specific — jni.h is shared — so we drop
+      # the two missing headers where build.gradle.kts looks for them
+      # (build/jni-include/<platform>/). Without this the linux/mingw tasks
+      # silently no-op and the published jar loses those native libraries.
+      - name: Provision cross JNI headers (linux/win32 jni_md.h)
+        run: |
+          set -euo pipefail
+          mkdir -p build/jni-include/linux build/jni-include/win32
+          curl -fsSL "https://raw.githubusercontent.com/openjdk/jdk21u/master/src/java.base/unix/native/include/jni_md.h" \
+            -o build/jni-include/linux/jni_md.h
+          curl -fsSL "https://raw.githubusercontent.com/openjdk/jdk21u/master/src/java.base/windows/native/include/jni_md.h" \
+            -o build/jni-include/win32/jni_md.h
+          ls -l build/jni-include/*/jni_md.h
+
+      # The GPG private key is stored in GitHub secrets with literal `\n`
+      # escapes (one-line encoding). `printf '%b'` interprets those escapes;
+      # the import is non-interactive (`--batch --pinentry-mode loopback`).
+      - name: Import GPG key
+        env:
+          GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSWORD }}
+        run: |
+          command -v gpg >/dev/null 2>&1 || brew install gnupg
+          printf '%b' "$GPG_KEY" | gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --import
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          gpgconf --reload gpg-agent
+
+      # Host-side gate on the publishing host: jvmTest exercises the JNI path
+      # against the freshly built darwin dylib, macosArm64Test the Kotlin/Native
+      # Lua path on Apple silicon.
+      - name: Run JVM and macOS native tests
+        run: ./gradlew jvmTest macosArm64Test --stacktrace
+
+      # The desktop JVM jar must carry a native library for every supported
+      # host OS. If the jni_md.h provisioning above regressed, the linux/mingw
+      # cross-compile silently no-ops and consumers on those OSes get a jar
+      # that fails at System.load — so assert the payload here.
+      - name: Verify JVM jar carries every host native library
+        run: |
+          set -euo pipefail
+          ./gradlew jvmJar --stacktrace
+          JAR="$(ls build/libs/klua-jvm-*.jar | head -1)"
+          echo "jar: $JAR"
+          rm -rf /tmp/jar-payload && mkdir -p /tmp/jar-payload
+          unzip -o -q "$JAR" -d /tmp/jar-payload
+          fail=0
+          for entry in linux_x64/libklua.so linux_arm64/libklua.so mingw_x64/libklua.dll macos_arm64/libklua.dylib; do
+            path="/tmp/jar-payload/$entry"
+            if [ ! -f "$path" ]; then
+              echo "ERROR: missing $entry"
+              fail=1
+              continue
+            fi
+            echo "== $entry"
+            file "$path"
+          done
+          file /tmp/jar-payload/linux_x64/libklua.so  | grep -q 'ELF 64-bit' || { echo "ERROR: linux_x64 payload is not ELF"; fail=1; }
+          file /tmp/jar-payload/linux_arm64/libklua.so | grep -q 'ELF 64-bit' || { echo "ERROR: linux_arm64 payload is not ELF"; fail=1; }
+          file /tmp/jar-payload/macos_arm64/libklua.dylib | grep -q 'Mach-O'     || { echo "ERROR: macos_arm64 payload is not Mach-O"; fail=1; }
+          file /tmp/jar-payload/mingw_x64/libklua.dll     | grep -qE 'PE32|MS Windows' || { echo "ERROR: mingw_x64 payload is not a PE binary"; fail=1; }
+          exit $fail
+
+      - name: Build Android AAR
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Repository hygiene (no build outputs tracked)
         run: test "$(git ls-files | grep -cE '^(build|\.gradle)/')" = "0"

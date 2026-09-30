@@ -162,10 +162,13 @@ internal object NativeLoader {
     }
 
     private fun currentLibFileName(): String {
+        // Must match the resource name produced by the `copyKluaNativeLib*`
+        // Gradle tasks (build.gradle.kts), which normalises every platform to
+        // "libklua.<ext>".
         val os = System.getProperty("os.name").lowercase()
         return when {
-            os.contains("windows") -> "klua.dll"
-            os.contains("mac") -> "klua.dylib"
+            os.contains("windows") -> "libklua.dll"
+            os.contains("mac") -> "libklua.dylib"
             else -> "libklua.so"
         }
     }
