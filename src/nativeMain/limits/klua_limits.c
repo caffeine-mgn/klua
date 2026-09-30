@@ -1,6 +1,10 @@
 #include <stdlib.h>
 #include <time.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include "lua.h"
 #include "lauxlib.h"
 #include "klua_limits.h"
@@ -8,10 +12,20 @@
 /* How often the limit hook runs, in Lua VM instructions. */
 #define KLUA_HOOK_PERIOD 10000
 
+/* Monotonic wall clock in microseconds. Windows' msvcrt-based mingw sysroot
+ * has no clock_gettime, so use QueryPerformanceCounter there; POSIX targets
+ * use clock_gettime(CLOCK_MONOTONIC). */
 static long long klua_now_us(void) {
+#if defined(_WIN32)
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (long long)((double)counter.QuadPart * 1000000.0 / (double)freq.QuadPart);
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (long long)ts.tv_sec * 1000000LL + (long long)ts.tv_nsec / 1000LL;
+#endif
 }
 
 static void *klua_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
