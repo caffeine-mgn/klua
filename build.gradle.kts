@@ -90,12 +90,20 @@ kotlin {
     iosSimulatorArm64()
     // watchOS: device + Apple-Silicon simulator. Same Xcode-derived
     // toolchain as iOS, so it builds on the macos-14 runner for free. We
-    // register both the ILP32-ABI `watchosArm64` (the original watchOS
-    // device target) and the newer LP64 `watchosDeviceArm64` introduced for
-    // watchOS 9+ — they target different ABIs (32-bit vs 64-bit pointers).
+    // register the ILP32-ABI `watchosArm64` (the original watchOS device
+    // target) plus the Apple-Silicon ILP32 sim; the LP64 `watchosDeviceArm64`
+    // target (introduced for watchOS 9+ on Apple Watch Series 9+ hardware)
+    // is intentionally not registered because the Xcode 26.4 watchOS SDK
+    // it ships with does not expose `errno.h` (or any of the POSIX
+    // `<errno.h>`-derived headers), which Lua's lauxlib.c includes
+    // unconditionally. There is no clean workaround at the application
+    // level — patching upstream Lua to conditionally include `<errno.h>`
+    // would be intrusive and would not survive an upstream upgrade. watchOS
+    // hardware running the LP64 ABI is still covered by the ILP32
+    // `watchosArm64` target, which uses a different sysroot and ships a
+    // full POSIX header set.
     watchosArm64()
     watchosSimulatorArm64()
-    watchosDeviceArm64()
     // tvOS: device + Apple-Silicon simulator. Same Xcode toolchain.
     tvosArm64()
     tvosSimulatorArm64()
