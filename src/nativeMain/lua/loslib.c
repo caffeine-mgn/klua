@@ -140,6 +140,21 @@
 
 
 static int os_execute (lua_State *L) {
+#if defined(__APPLE__)
+  /* Apple mobile targets (iOS / watchOS / tvOS) ship without system(3):
+   * <Availability.h> marks it as not available, and Clang's preprocessor
+   * refuses to redirect even via a `#define system my_stub` macro because
+   * the unavailability propagates to the expanded symbol. The path is
+   * unreachable on a sandboxed device anyway, so we just return the
+   * "no shell" sentinel that Lua's os.execute would have produced on
+   * a system with no /bin/sh. */
+  const char *cmd = luaL_optstring(L, 1, NULL);
+  if (cmd == NULL) {
+    lua_pushboolean(L, 0);  /* false: no shell available */
+    return 1;
+  }
+  return luaL_fileresult(L, 0, "os.execute");
+#else
   const char *cmd = luaL_optstring(L, 1, NULL);
   int stat;
   errno = 0;
@@ -150,6 +165,7 @@ static int os_execute (lua_State *L) {
     lua_pushboolean(L, stat);  /* true if there is a shell */
     return 1;
   }
+#endif
 }
 
 
