@@ -76,11 +76,17 @@ actual class LuaEngine actual constructor(
 
     actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
         prepareLimits()
-        val r = luaL_loadbufferx(
+        // We can't call `luaL_loadbufferx` directly from Kotlin/Native because
+        // its `size_t sz` parameter maps to `ULong` on 64-bit K/N targets and
+        // to `UInt` on 32-bit K/N targets, with no portable Kotlin type. The
+        // common Kotlin metadata compilation picks one (UInt, the smaller)
+        // and that breaks the call site on 64-bit targets. Instead we use
+        // `klua_loadstring` from klua_limits.h, a thin wrapper that takes a
+        // NUL-terminated C string and computes the byte length via strlen
+        // internally — so the Kotlin side never has to plumb a size_t.
+        val r = klua_loadstring(
             ll.state,
             text,
-            text.encodeToByteArray().size.toULong(),
-            "=(eval)",
             if (allowBinaryChunks) null else "t",
         )
         when (r) {

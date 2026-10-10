@@ -74,6 +74,17 @@ long long klua_control_used_memory(klua_control *c);
  */
 struct lua_State *klua_newstate(klua_control *c);
 
+/*
+ * Thin wrapper around luaL_loadbufferx that takes a NUL-terminated C string
+ * and computes the byte length via strlen internally — so Kotlin/Native
+ * cinterop callers don't have to plumb a `size_t` (which is `ULong` on
+ * 64-bit K/N and `UInt` on 32-bit K/N, with no portable Kotlin type). Pass
+ * `mode = "t"` to reject binary chunks, or NULL to allow them. `name` is
+ * optional and is used by Lua for error messages (we use `buff` itself,
+ * which is the standard `luaL_loadstring` convention).
+ */
+int klua_loadstring(struct lua_State *L, const char *s, const char *mode);
+
 #ifdef __cplusplus
 }
 #endif

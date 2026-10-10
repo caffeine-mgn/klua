@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #if defined(_WIN32)
@@ -113,4 +114,9 @@ lua_State *klua_newstate(klua_control *c) {
     *(klua_control **)lua_getextraspace(L) = c;
     lua_sethook(L, klua_hook, LUA_MASKCOUNT, KLUA_HOOK_PERIOD);
     return L;
+}
+
+
+int klua_loadstring(lua_State *L, const char *s, const char *mode) {
+    return luaL_loadbufferx(L, s, strlen(s), s, mode);
 }

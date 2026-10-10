@@ -66,16 +66,15 @@ kotlin {
     linuxArm64()
     mingwX64()
     androidNativeArm64()
-    // androidNativeArm32 / androidNativeX86 are tier-3 32-bit targets, but
-    // Kotlin/Native cinterop maps C's `size_t` to `UInt` on 32-bit K/N and to
-    // `ULong` on 64-bit K/N. There is no portable Kotlin type for the
-    // mapping, so calls to functions like `luaL_loadbufferx` (which take
-    // `size_t sz`) would have to be hand-dispatched per target. The
-    // 32-bit-only NDK ABIs are tier-3 anyway (Google has not produced a
-    // 32-bit Android device since 2014, and the 32-bit x86 Android emulator
-    // ABI exists only for the SDK image), so we drop them. The full set of
-    // supported Android Native targets is arm64 + x86_64.
+    // Tier-3 32-bit Android NDK targets. These compile now that the
+    // LuaEngine.eval() call site uses klua_loadstring (a C wrapper that
+    // takes a NUL-terminated string and computes strlen internally)
+    // instead of calling luaL_loadbufferx directly — that wrapper avoids
+    // the size_t/ULong/UInt mismatch that Kotlin/Native cinterop has
+    // when size_t maps to ULong on 64-bit K/N and UInt on 32-bit K/N.
+    androidNativeArm32()
     androidNativeX64()
+    androidNativeX86()
     // macosX64 is deprecated since Kotlin 2.3.20 (scheduled for removal); the
     // supported macOS target is macosArm64, and the GitHub macOS runner is
     // arm64-only anyway.
