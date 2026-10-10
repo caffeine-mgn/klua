@@ -103,6 +103,31 @@ kotlin {
         val buildLuaTask = clangBuildStatic(target = konanTarget, name = "lua") {
             konanVersion.set("2.4.20")
             compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3")
+            // Apple mobile targets (iOS / watchOS / tvOS) ship without the
+            // `system(3)` libc entry point — Apple's `Availability.h` declares
+            // it as `__OSX_AVAILABLE_BUT_DEPRECATED_MSG(...,
+            // "not available on iOS")`. The C compiler therefore rejects
+            // loslib.c's `stat = system(cmd)` even though that path is
+            // unreachable on a sandboxed device. We override the symbol with a
+            // small stub in `klua_apple_stubs.c` that always reports
+            // "no shell" (sets errno=ENOSYS, returns -1) — which both branches
+            // of `os_execute` map to the right answer on iOS:
+            //   `os.execute("cmd")` → luaL_execresult(-1, errno=ENOSYS)
+            //     → fileresult(nil, "...", ENOSYS)  — clean error
+            //   `os.execute()`      → lua_pushboolean(L, -1)
+            //     → -1 is truthy in Lua so this is "true" (shell present).
+            // That's the wrong direction for the "is there a shell" probe, so
+            // we also override the body via `-Dsystem=...` to return 0
+            // (false / no shell) — see klua_apple_stubs.c for the macro
+            // choice. The single `system()` call site in the tree is
+            // `loslib.c:146`, verified by grep, so this rewrite has no other
+            // effect.
+            if (konanTarget.family == org.jetbrains.kotlin.konan.target.Family.IOS ||
+                konanTarget.family == org.jetbrains.kotlin.konan.target.Family.TVOS ||
+                konanTarget.family == org.jetbrains.kotlin.konan.target.Family.WATCHOS
+            ) {
+                compileArgs("-Dsystem=klua_apple_system")
+            }
             include(LUA_SOURCES_DIR)
             include(LIMITS_SOURCES_DIR)
             compileDir(
