@@ -1,8 +1,11 @@
 import pw.binom.kotlin.clang.addStatic
 import pw.binom.kotlin.clang.clangBuildDynamic
+import pw.binom.kotlin.clang.clangBuildJni
 import pw.binom.kotlin.clang.clangBuildStatic
+import pw.binom.kotlin.clang.compileDirJni
 import pw.binom.kotlin.clang.compileTaskName
 import pw.binom.kotlin.clang.eachNative
+import pw.binom.kotlin.clang.konan.jdkIncludePlatform
 import org.gradle.plugins.signing.SigningExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.konan.target.KonanTarget
@@ -39,8 +42,9 @@ val LUA_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/lua")
 // hook). Compiled into every native backend: Kotlin/Native static lib and the
 // JNI dynamic libraries (JVM jar + Android AAR).
 val LIMITS_SOURCES_DIR = file("${buildFile.parentFile}/src/nativeMain/limits")
-val JNI_SOURCES_DIR = file("${buildFile.parentFile}/src/jvmMain/c")
-// Generated jniLibs tree packaged into the Android AAR: <abi>/libklua.so.
+// JNI bridge location: klua_jni.c. Resolved by BuildDynamicTask.compileDirJni()
+// which defaults to this KMP-conventional path, so we no longer need a constant
+// for it on the JVM/JNI side. (Android AARs have their own convention below.)
 val ANDROID_JNI_LIBS_DIR = layout.buildDirectory.dir("androidJniLibs")
 // Copy tasks that populate ANDROID_JNI_LIBS_DIR; wired into AGP's preBuild below.
 val androidNativeCopyTasks = mutableListOf<TaskProvider<*>>()
@@ -62,21 +66,33 @@ kotlin {
     linuxArm64()
     mingwX64()
     androidNativeArm64()
+    androidNativeArm32()
     androidNativeX64()
+    androidNativeX86()
     // macosX64 is deprecated since Kotlin 2.3.20 (scheduled for removal); the
     // supported macOS target is macosArm64, and the GitHub macOS runner is
     // arm64-only anyway.
     macosArm64()
-//    ios()
-//    iosArm32()
-//    iosArm64()
-//    iosSimulatorArm64()
-//    watchos()
-//    watchosArm32()
-//    watchosArm64()
-//    watchosSimulatorArm64()
-//    watchosX86()
-//    watchosX64()
+    // Apple mobile: iOS device + Apple-Silicon simulator. The macos-14 CI
+    // runner carries Xcode with the iOS simulator runtime, so we can build
+    // and test these on every release. We skip the deprecated Intel-sim
+    // targets (iosX64, watchosX64, tvosX64) and the deprecated 32-bit
+    // device targets (iosArm32, watchosArm32, watchosX86) — they are
+    // scheduled for removal in the Kotlin/Native tier plan
+    // (https://kotl.in/native-targets-tiers).
+    iosArm64()
+    iosSimulatorArm64()
+    // watchOS: device + Apple-Silicon simulator. Same Xcode-derived
+    // toolchain as iOS, so it builds on the macos-14 runner for free. We
+    // register both the ILP32-ABI `watchosArm64` (the original watchOS
+    // device target) and the newer LP64 `watchosDeviceArm64` introduced for
+    // watchOS 9+ — they target different ABIs (32-bit vs 64-bit pointers).
+    watchosArm64()
+    watchosSimulatorArm64()
+    watchosDeviceArm64()
+    // tvOS: device + Apple-Silicon simulator. Same Xcode toolchain.
+    tvosArm64()
+    tvosSimulatorArm64()
     targets {
         compilerOptions {
             freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -112,82 +128,46 @@ kotlin {
     }
 
     /*
-     * Build Lua 5.4 + klua_jni.c as a dynamic library for each JVM host via clangBuildDynamic.
-     * Output naming: build/native/klua/<target>/dynamic/libklua.{so,dylib,dll}.
+     * Build Lua 5.4 + klua_jni.c as `libklua.{so,dylib,dll}` for each JVM host
+     * via clangBuildJni. The plugin wires `-I $JAVA_HOME/include` and
+     * `-I $JAVA_HOME/include/<platform>` automatically, looks up jni_md.h from
+     * the local JDK on a native host and falls back to the CI-staged
+     * `build/jni-include/<platform>/jni_md.h` on a cross host, and onlyIf's
+     * cross-targets whose headers are unavailable. We just declare the source
+     * dirs and the per-target compile flags.
      *
-     * Targets are registered eagerly so the build graph is consistent across platforms;
-     * the actual cross-compile step is what runs (or skips) per host. Linux/Windows targets
-     * require the corresponding cross-toolchain on the build host; macOS targets only
-     * compile when running on macOS (Apple's clang doesn't cross-compile from Linux/Windows
-     * without SDK hacking, so we don't bother).
+     * Output paths stay at `build/native/klua/<target>/dynamic/libklua.<ext>`
+     * thanks to `useLibPrefix = true` baked into clangBuildJni.
      */
     val currentHost = org.jetbrains.kotlin.konan.target.HostManager.host
     val isMacHost = currentHost == org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_X64 ||
-            currentHost == org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_ARM64
+        currentHost == org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_ARM64
     val jvmHostTargets = buildList {
         add(org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_X64)
         add(org.jetbrains.kotlin.konan.target.KonanTarget.LINUX_ARM64)
         add(org.jetbrains.kotlin.konan.target.KonanTarget.MINGW_X64)
-        if (isMacHost) {
-            add(currentHost)
-        }
+        if (isMacHost) add(currentHost)
     }
-    val jvmBuildTasks = jvmHostTargets.associateWith { target ->
-        // Platform-specific JNI include: JAVA_HOME/include/<linux|darwin|win32>
-        val platform = when (target.family) {
-            org.jetbrains.kotlin.konan.target.Family.LINUX,
-            org.jetbrains.kotlin.konan.target.Family.ANDROID -> "linux"
-            org.jetbrains.kotlin.konan.target.Family.OSX -> "darwin"
-            org.jetbrains.kotlin.konan.target.Family.MINGW -> "win32"
-            else -> "linux"
-        }
-        val jdkHome = System.getenv("JAVA_HOME")
-        val jdkIncludeCandidates = listOfNotNull(
-            jdkHome?.let { "$it/include" },
-            "/usr/lib/jvm/java-21-openjdk/include",
-            "/usr/lib/jvm/default-java/include",
-        )
-        val jdkInclude = jdkIncludeCandidates.firstOrNull { File(it).exists() } ?: ""
-        // Target-specific jni_md.h. On a native host it comes from the JDK
-        // itself ($JAVA_HOME/include/<platform>). When cross-compiling the JVM
-        // native library — e.g. building the linux/mingw variants on the macOS
-        // "universal host" CI runner — the target headers are not in the local
-        // JDK, so CI pre-populates build/jni-include/<platform>/jni_md.h. Only
-        // jni_md.h is platform-specific; jni.h itself is shared and comes from
-        // the host JDK.
-        val jniHeaderOverride = layout.buildDirectory.dir("jni-include/$platform").get().asFile
-        val jdkIncludePlatformCandidates = listOfNotNull(
-            jniHeaderOverride.takeIf { File(it, "jni_md.h").exists() }?.absolutePath,
-            jdkHome?.let { "$it/include/$platform" },
-            "/usr/lib/jvm/java-21-openjdk/include/$platform",
-            "/usr/lib/jvm/default-java/include/$platform",
-        )
-        val jdkIncludePlatform = jdkIncludePlatformCandidates.firstOrNull { File(it).exists() } ?: ""
-        clangBuildDynamic(target = target, name = "klua") {
-            konanVersion.set("2.4.20")
-            compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3", "-fno-rtti")
-            include(LUA_SOURCES_DIR)
-            include(LIMITS_SOURCES_DIR)
-            if (jdkInclude.isNotEmpty()) include(File(jdkInclude))
-            if (jdkIncludePlatform.isNotEmpty()) include(File(jdkIncludePlatform))
-            compileDir(sourceDir = LUA_SOURCES_DIR)
-            compileDir(sourceDir = LIMITS_SOURCES_DIR)
-            compileDir(sourceDir = JNI_SOURCES_DIR)
-        }.also { dynamicTask ->
-            // Cross-targets gracefully no-op when the host can't build them: llvm-as
-            // and the platform-specific JDK headers (jni_md.h) aren't always present.
-            // Keeping the task in the graph means `gradle tasks` / IDEs see the full
-            // target list; on capable hosts the real cross-compile happens automatically.
-            val needsCrossCompile = target != currentHost
-            if (needsCrossCompile) {
-                val jdkIncludeOk = jdkInclude.isNotEmpty() && jdkIncludePlatform.isNotEmpty()
-                dynamicTask.onlyIf("${target.name} build host prerequisites") {
-                    jdkIncludeOk
-                }
-            }
-        }
+    val jvmBuildTasks = clangBuildJni(
+        name = "klua",
+        targets = jvmHostTargets,
+        // CI pre-populates this directory on the macOS "universal host" runner
+        // so cross-compiled linux/mingw natives find a jni_md.h even when the
+        // host JDK only ships the host platform's headers.
+        jniHeadersOverride = layout.buildDirectory.dir("jni-include").get().asFile,
+    ) {
+        konanVersion.set("2.4.20")
+        compileArgs("-std=gnu99", "-DLUA_COMPAT_5_3", "-fno-rtti")
+        include(LUA_SOURCES_DIR)
+        include(LIMITS_SOURCES_DIR)
+        compileDir(sourceDir = LUA_SOURCES_DIR)
+        compileDir(sourceDir = LIMITS_SOURCES_DIR)
+        compileDirJni()
     }
-    val jvmCopyTasks = jvmBuildTasks.mapValues { (target, buildTask) ->
+    // clangBuildJni already writes lib<name>.<ext>, so we just point each
+    // copy task at it and into the per-target resource dir AGP packages.
+    val jvmCopyTasks = jvmBuildTasks.associate { task ->
+        val target = task.target.get()
         val libExt = when (target.family) {
             org.jetbrains.kotlin.konan.target.Family.MINGW -> "dll"
             org.jetbrains.kotlin.konan.target.Family.OSX,
@@ -196,19 +176,14 @@ kotlin {
             org.jetbrains.kotlin.konan.target.Family.WATCHOS -> "dylib"
             else -> "so"
         }
-        // clangBuildDynamic outputs to "klua.<ext>" (no "lib" prefix). We also produce a
-        // "libklua.<ext>" copy so platforms that prefer soname-style naming are happy;
-        // NativeLoader picks the right one based on the host.
-        val srcFileName = "klua.$libExt"
-        val libFileName = "libklua.$libExt"
+        val srcFileName = "libklua.$libExt"
         val outDir = layout.buildDirectory.dir("processed-resources/native/${target.name}").get().asFile
         val copyTask = tasks.register("copyKluaNativeLib${target.name}", Copy::class.java) {
-            from(buildTask.dynamicFile)
-            rename { libFileName }
+            from(task.dynamicFile)
             into(outDir)
             outputs.upToDateWhen { true }
         }
-        copyTask to srcFileName
+        target to (copyTask to srcFileName)
     }
 
     /*
@@ -229,7 +204,7 @@ kotlin {
             include(LIMITS_SOURCES_DIR)
             compileDir(sourceDir = LUA_SOURCES_DIR)
             compileDir(sourceDir = LIMITS_SOURCES_DIR)
-            compileDir(sourceDir = JNI_SOURCES_DIR)
+            compileDirJni()
         }
         tasks.register("copyAndroidKlua${target.name}", Copy::class.java) {
             from(nativeTask.dynamicFile)
@@ -261,11 +236,12 @@ kotlin {
             dependsOn(commonTest)
         }
         // Wire the per-target POSIX source sets (linux*, androidNative*,
-        // mingw*, macos*) onto the shared posixMain / posixTest hierarchy.
-        // The binom-publish plugin used to expose a `dependsOn(mask, to)`
-        // extension for this; we replace it with a simple wildcard helper
-        // because binom-publish is no longer on the classpath.
-        listOf("linux", "androidNative", "mingw", "macos").forEach { family ->
+        // mingw*, macos*, ios*, watchos*, tvos*) onto the shared
+        // posixMain / posixTest hierarchy. The binom-publish plugin used to
+        // expose a `dependsOn(mask, to)` extension for this; we replace it
+        // with a simple wildcard helper because binom-publish is no longer
+        // on the classpath.
+        listOf("linux", "androidNative", "mingw", "macos", "ios", "watchos", "tvos").forEach { family ->
             sourceSets.matching { it.name.startsWith(family) && it.name.endsWith("Main") }
                 .configureEach { dependsOn(posixMain) }
             sourceSets.matching { it.name.startsWith(family) && it.name.endsWith("Test") }

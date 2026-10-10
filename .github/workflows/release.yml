@@ -230,10 +230,16 @@ jobs:
           gpgconf --reload gpg-agent
 
       # Host-side gate on the publishing host: jvmTest exercises the JNI path
-      # against the freshly built darwin dylib, macosArm64Test the Kotlin/Native
-      # Lua path on Apple silicon.
-      - name: Run JVM and macOS native tests
-        run: ./gradlew jvmTest macosArm64Test --stacktrace
+      # against the freshly built darwin dylib; the Apple K/N tests cover the
+      # Kotlin/Native Lua path on every Apple-family simulator target that the
+      # macos-14 runner can host (Kotlin/Native 2.4+ auto-discovers the
+      # iOS/watchOS/tvOS simulator runtime shipped with the preinstalled
+      # Xcode). Device targets (iosArm64, watchosArm64, tvosArm64) and Intel
+      # simulators (iosX64, watchosX64, tvosX64) are built and linked but
+      # only simulator-arm64 is exercised at runtime here — the others run on
+      # the same klib and would only re-test the same C surface.
+      - name: Run JVM and Apple native tests
+        run: ./gradlew jvmTest macosArm64Test iosSimulatorArm64Test watchosSimulatorArm64Test tvosSimulatorArm64Test --stacktrace
 
       # The desktop JVM jar must carry a native library for every supported
       # host OS. If the jni_md.h provisioning above regressed, the linux/mingw
