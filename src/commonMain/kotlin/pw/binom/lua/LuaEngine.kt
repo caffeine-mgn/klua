@@ -11,13 +11,15 @@ expect class LuaEngine(
     override fun close()
 
     /**
-     * Requests cooperative cancellation of the eval/call currently running (or
-     * the next one, if none is running). Safe to call from another thread.
+     * Requests cooperative cancellation of the eval/call that is currently
+     * running. Safe to call from another thread.
      *
      * The cancellation flag is reported to the running Lua code through the
      * limit hook and surfaces as [LuaLimitException] with
      * [LuaLimitKind.CANCELLED]. It is cleared at the start of every eval/call,
-     * and is a no-op when no limits/hook are active.
+     * so calling [cancel] while nothing is running has no effect on the next
+     * operation (the promise "or the next one" was inaccurate — see
+     * AUDIT-2026-10-12.md #7). It is a no-op when no limits/hook are active.
      */
     fun cancel()
 
