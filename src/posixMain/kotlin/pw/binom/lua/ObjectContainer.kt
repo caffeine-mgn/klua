@@ -81,10 +81,13 @@ actual class ObjectContainer actual constructor() {
         val lud = upvalue as? LuaValue.LightUserData ?: return false
         val inner = lud.lightPtr ?: return false
         val underlying = inner.asStableRef<Any>().get()
-        // Use remove(Any) (which knows the real identity path) and also
-        // drop the LightUserData's StableRef to avoid leaking the upvalue.
         val removed = remove(underlying)
-        lud.dispose()
+        // remove(Any) already disposed the StableRef — the container owns it.
+        // The upvalue LightUserData is only a non-owning view onto the same
+        // pointer, so null it (so a later `.value` can't dereference the freed
+        // StableRef) but do NOT dispose() it: that freed the same StableRef a
+        // second time (AUDIT-2026-10-12.md #3).
+        lud.lightPtr = null
         return removed
     }
 
