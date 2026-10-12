@@ -19,7 +19,7 @@ internal fun LuaContext.pushValue(value: LuaValue) {
         is LuaValue.LuaInt -> lua_pushinteger(state, value.value)
         is LuaValue.Boolean -> lua_pushboolean(state, if (value.value) 1 else 0)
         is LuaValue.String -> lua_pushstring(state, value.value)
-        is LuaValue.Ref -> state.pushRef(value.ref) // lua_rawgeti(this, LUA_REGISTRYINDEX, value.ref.convert())
+        is LuaValue.Ref -> state.pushRef(value.ref)
         is LuaValue.TableValue -> {
             lua_createtable(state, 0, value.rawSize)
             val table = lua_gettop(state)
@@ -37,10 +37,6 @@ internal fun LuaContext.pushValue(value: LuaValue) {
         is LuaValue.LightUserData -> {
             lua_pushlightuserdata(state, value.lightPtr)
         }
-        else -> throw RuntimeException("${value::class} not supported")
-//        is LuaValue.Callable -> TODO()
-//        is LuaValue.Data -> TODO()
-//        is LuaValue.Meta -> TODO()
-//        is LuaValue.Table -> TODO()
+        else -> throw LuaCastException("Cannot push ${value::class.simpleName} to Lua")
     }
 }

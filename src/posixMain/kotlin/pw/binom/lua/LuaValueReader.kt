@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, ExperimentalForeignApi::class, ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class)
 
 package pw.binom.lua
 
@@ -22,11 +22,8 @@ fun LuaState.readLightUserData(index: Int): COpaquePointer? {
 }
 
 internal fun LuaContext.readValue(index: Int, ref: Boolean): LuaValue {
-//    println("LuaValueReader #-2")
     val index = state.absoluteStackValue(index)
-//    println("LuaValueReader #-1")
     val type = lua_type(state, index)
-//    println("LuaValueReader #0")
     return when (type) {
         LUA_TNONE, LUA_TNIL -> LuaValue.Nil
         LUA_TNUMBER -> if (lua_isinteger(state, index) != 0) {
@@ -104,11 +101,9 @@ internal fun LuaContext.readValue(index: Int, ref: Boolean): LuaValue {
             }
         }
 //        LUA_TUSERDATA1 -> TODO("User data not supported")
-        LUA_TTHREAD -> TODO("Thread not supported")
+        LUA_TTHREAD -> throw LuaCastException("Lua coroutine (thread) values are not supported")
         LUA_TUSERDATA -> {
-//            println("LuaValueReader #1")
             val ref = state.makeRef(index, popValue = false)
-//            println("LuaValueReader #2")
             LuaValue.UserData(ref = ref, ll = this)
         }
 
@@ -117,9 +112,6 @@ internal fun LuaContext.readValue(index: Int, ref: Boolean): LuaValue {
             LuaValue.LightUserData(c)
         }
 
-        else -> {
-            val typename: String = "unknown" // TODO()//lua_typename1(this, type)?.toKString()
-            throw RuntimeException("Unknown lua type: $typename (Code $type)")
-        }
+        else -> throw LuaCastException("Unknown lua type (code $type)")
     }
 }
