@@ -13,7 +13,14 @@ actual class ObjectContainer actual constructor() {
     private val closures = ClosureMap()
 
     actual fun makeClosure(func: LuaFunction): LuaValue.FunctionValue {
-        val id = nextClosureId()
+        // Allocate the bridge id from the SHARED LuaNative counter. The
+        // previous per-container counter started at 1 and collided with
+        // LuaNative.nextCallbackId() (also starting at 1): both index the same
+        // LuaNative.callbacks map, so a makeClosure and a createACClosure could
+        // land on the same id and one bridge silently replaced the other — a
+        // Lua call then dispatched to the WRONG Kotlin lambda
+        // (AUDIT-2026-10-12.md #1).
+        val id = LuaNative.nextCallbackId()
         closures[id] = func
         // Capture the ClosureMap instance, not `this`. The bridge only ever
         // touches `closures` (a leaf object from the cycle's perspective),
@@ -84,11 +91,6 @@ actual class ObjectContainer actual constructor() {
                 // the whole Lua state down anyway.
             }
         }
-    }
-
-    companion object {
-        private val counter = java.util.concurrent.atomic.AtomicInteger(1)
-        fun nextClosureId(): Int = counter.getAndIncrement()
     }
 }
 
