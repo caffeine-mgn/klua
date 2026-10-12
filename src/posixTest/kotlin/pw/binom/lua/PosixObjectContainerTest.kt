@@ -3,6 +3,7 @@
 package pw.binom.lua
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -14,6 +15,29 @@ import kotlin.test.assertTrue
  * тест проверяет наблюдаемый контракт, а не само освобождение.
  */
 class PosixObjectContainerTest {
+
+    /**
+     * Moved here from `src/mingwX64Test/` (dead coverage — see
+     * AUDIT-2026-10-12.md #14).
+     */
+    @Test
+    fun makeClosureTest() {
+        val m = ObjectContainer()
+        val myFunc = m.makeClosure { emptyList() }
+        assertEquals(CLOSURE_FUNCTION, myFunc.ptr)
+        assertEquals(1, myFunc.upValues.size)
+    }
+
+    @Test
+    fun getClosureTest() {
+        val m = ObjectContainer()
+        val func = LuaFunction { emptyList() }
+        val closure = m.makeClosure(func)
+        assertEquals(func, m.getClosure(closure))
+        assertEquals(func, m.get(closure.upValues[0].checkedLightUserdata()))
+        assertTrue(m.remove(func))
+        assertNull(m.getClosure(closure))
+    }
 
     @Test
     fun removeClosureReturnsTrueAndClearsClosure() {
