@@ -61,16 +61,19 @@ actual sealed interface LuaValue {
 
         fun dispose() {
             val p = ptr ?: return
-            // Cancel the registered Cleaner BEFORE the unref so the Cleaner
-            // can't fire later with a stale refId and trigger a second
-            // luaL_unref on the same registry slot. luaL_unref is idempotent
-            // in spirit but Lua 5.4's freelist management puts the slot back
-            // onto the freelist AND writes the freelist head into
-            // registry[refId] — a second unref on a recycled slot creates a
-            // self-loop and corrupts the registry freelist.
+            // Release the registry slot through the SAME cleaner action that
+            // fires on GC: `clean()` runs RefAction, which hands the refId to
+            // the owner thread via deferUnref (Lua is not thread-safe, so the
+            // actual luaL_unref must not run on an arbitrary thread).
+            //
+            // The previous version ALSO called LuaNative.unref() directly
+            // here, so a single dispose() unref'd the same slot twice. Lua
+            // 5.4's freelist then wrote registry[refId] = refId, and every
+            // later luaL_ref() returned that one slot — corrupting all
+            // TableRef/FunctionRef/UserData (AUDIT-2026-10-12.md #2).
+            // clean() is idempotent, so dispose() is now safe to call twice.
             cleanable.clean()
             StaticRefs.dispose(p)
-            if (ll.state != 0L) LuaNative.unref(ll.state, LUA_REGISTRYINDEX, refId)
         }
 
         // Cleaner action: invoked when this UserData becomes phantom-reachable.
