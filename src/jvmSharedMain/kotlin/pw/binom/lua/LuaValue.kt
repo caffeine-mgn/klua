@@ -424,10 +424,6 @@ internal fun LuaValue.RefObject.callToString(ll: LuaContext): kotlin.String {
     return s ?: ""
 }
 
-internal fun LuaContext.push(value: LuaValue) {
-    pushValue(state, value)
-}
-
 internal fun pcallCall(ll: LuaContext, args: List<LuaValue>): List<LuaValue> {
     val topBefore = LuaNative.getTop(ll.state)
     args.forEach { pushValue(ll.state, it) }
