@@ -12,6 +12,7 @@
 #include <jni.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "lua.h"
@@ -108,11 +109,129 @@ static void klua_detach(int detach) {
     if (detach) (*klua_jvm)->DetachCurrentThread(klua_jvm);
 }
 
+/*
+ * JNI string marshalling.
+ *
+ * Java String is UTF-16; Lua strings are raw bytes that klua treats as UTF-8.
+ * NewStringUTF/GetStringUTFChars speak *modified* UTF-8 (CESU-8), which differs
+ * from real UTF-8 for supplementary code points (emoji: a 4-byte UTF-8 sequence
+ * becomes a 6-byte surrogate pair) and for U+0000. Using them here both mangled
+ * Lua-originated strings and gave Lua the wrong byte length for Java-originated
+ * ones. We convert UTF-16 <-> UTF-8 by hand instead (see AUDIT-2026-10-12.md #5).
+ *
+ * java_string_to_utf8 returns a malloc'd, NUL-terminated buffer; *out_len is the
+ * byte length (excluding the terminator). Caller frees with free(). NULL input
+ * yields NULL.
+ */
+static char* java_string_to_utf8(JNIEnv* env, jstring s, size_t* out_len) {
+    if (s == NULL) {
+        if (out_len) *out_len = 0;
+        return NULL;
+    }
+    jsize n = (*env)->GetStringLength(env, s);
+    const jchar* u = (*env)->GetStringChars(env, s, NULL);
+    if (u == NULL) {
+        if (out_len) *out_len = 0;
+        return NULL;
+    }
+    /* At most 3 UTF-8 bytes per UTF-16 unit; +1 for the terminator. */
+    char* out = (char*)malloc((size_t)n * 3 + 1);
+    if (out == NULL) {
+        (*env)->ReleaseStringChars(env, s, u);
+        if (out_len) *out_len = 0;
+        return NULL;
+    }
+    size_t k = 0;
+    jsize i = 0;
+    while (i < n) {
+        uint32_t c = (uint32_t)u[i];
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < n) {
+            uint32_t lo = (uint32_t)u[i + 1];
+            if (lo >= 0xDC00 && lo <= 0xDFFF) {
+                c = 0x10000u + ((c - 0xD800u) << 10) + (lo - 0xDC00u);
+                i++;
+            }
+        }
+        if (c < 0x80u) {
+            out[k++] = (char)c;
+        } else if (c < 0x800u) {
+            out[k++] = (char)(0xC0u | (c >> 6));
+            out[k++] = (char)(0x80u | (c & 0x3Fu));
+        } else if (c < 0x10000u) {
+            out[k++] = (char)(0xE0u | (c >> 12));
+            out[k++] = (char)(0x80u | ((c >> 6) & 0x3Fu));
+            out[k++] = (char)(0x80u | (c & 0x3Fu));
+        } else {
+            out[k++] = (char)(0xF0u | (c >> 18));
+            out[k++] = (char)(0x80u | ((c >> 12) & 0x3Fu));
+            out[k++] = (char)(0x80u | ((c >> 6) & 0x3Fu));
+            out[k++] = (char)(0x80u | (c & 0x3Fu));
+        }
+        i++;
+    }
+    out[k] = '\0';
+    (*env)->ReleaseStringChars(env, s, u);
+    if (out_len) *out_len = k;
+    return out;
+}
+
+/*
+ * Inverse of java_string_to_utf8: decodes `len` UTF-8 bytes into a Java String.
+ * Invalid sequences become U+FFFD (matching what a UTF-8 decoder does). Embedded
+ * NUL bytes are preserved (they map to U+0000 in the resulting String).
+ */
+static jstring utf8_to_java(JNIEnv* env, const char* s, size_t len) {
+    if (s == NULL) return NULL;
+    /* At most one UTF-16 unit per UTF-8 byte; +1 is headroom. */
+    jchar* buf = (jchar*)malloc((len + 1) * sizeof(jchar));
+    if (buf == NULL) return NULL;
+    size_t i = 0, k = 0;
+    while (i < len) {
+        unsigned char b0 = (unsigned char)s[i];
+        uint32_t cp = 0xFFFDu;
+        size_t adv = 1;
+        if (b0 < 0x80u) {
+            cp = b0;
+        } else if ((b0 & 0xE0u) == 0xC0u) {
+            if (i + 1 < len) {
+                cp = ((uint32_t)(b0 & 0x1Fu) << 6) | ((uint32_t)(unsigned char)s[i + 1] & 0x3Fu);
+                adv = 2;
+            }
+        } else if ((b0 & 0xF0u) == 0xE0u) {
+            if (i + 2 < len) {
+                cp = ((uint32_t)(b0 & 0x0Fu) << 12)
+                   | (((uint32_t)(unsigned char)s[i + 1] & 0x3Fu) << 6)
+                   | ((uint32_t)(unsigned char)s[i + 2] & 0x3Fu);
+                adv = 3;
+            }
+        } else if ((b0 & 0xF8u) == 0xF0u) {
+            if (i + 3 < len) {
+                cp = ((uint32_t)(b0 & 0x07u) << 18)
+                   | (((uint32_t)(unsigned char)s[i + 1] & 0x3Fu) << 12)
+                   | (((uint32_t)(unsigned char)s[i + 2] & 0x3Fu) << 6)
+                   | ((uint32_t)(unsigned char)s[i + 3] & 0x3Fu);
+                adv = 4;
+            }
+        }
+        i += adv;
+        if (cp <= 0xFFFFu) {
+            buf[k++] = (jchar)cp;
+        } else {
+            cp -= 0x10000u;
+            buf[k++] = (jchar)(0xD800u + (cp >> 10));
+            buf[k++] = (jchar)(0xDC00u + (cp & 0x3FFu));
+        }
+    }
+    jstring out = (*env)->NewString(env, buf, (jsize)k);
+    free(buf);
+    return out;
+}
+
 static jstring str_from_lua(JNIEnv* env, lua_State* L, int idx) {
     size_t len = 0;
     const char* s = lua_tolstring(L, idx, &len);
     if (s == NULL) return NULL;
-    return (*env)->NewStringUTF(env, s);
+    return utf8_to_java(env, s, len);
 }
 
 static int abs_stack(lua_State* L, int idx) {
@@ -497,10 +616,12 @@ JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushNumber(JNIEnv* env, jclas
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushString(JNIEnv* env, jclass cls, jlong statePtr, jstring s) {
     lua_State* L = jlong_to_lua_state(statePtr);
     if (s == NULL) { lua_pushnil(L); return; }
-    const char* c = (*env)->GetStringUTFChars(env, s, NULL);
+    size_t len = 0;
+    char* c = java_string_to_utf8(env, s, &len);
     if (c == NULL) { lua_pushnil(L); return; }
-    lua_pushstring(L, c);
-    (*env)->ReleaseStringUTFChars(env, s, c);
+    /* pushlstring (not pushstring) so embedded NUL bytes survive. */
+    lua_pushlstring(L, c, len);
+    free(c);
 }
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_pushLightUserdata(JNIEnv* env, jclass cls, jlong statePtr, jlong ptr) {
@@ -598,7 +719,7 @@ JNIEXPORT jstring JNICALL Java_pw_binom_lua_LuaNative_toLString(JNIEnv* env, jcl
     size_t len = 0;
     const char* s = luaL_tolstring(L, (int)idx, &len);
     if (s == NULL) return NULL;
-    jstring out = (*env)->NewStringUTF(env, s);
+    jstring out = utf8_to_java(env, s, len);
     lua_pop(L, 1);
     return out;
 }
@@ -680,26 +801,31 @@ JNIEXPORT jboolean JNICALL Java_pw_binom_lua_LuaNative_isLightUserdata(JNIEnv* e
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_getGlobal(JNIEnv* env, jclass cls, jlong statePtr, jstring name) {
     lua_State* L = jlong_to_lua_state(statePtr);
-    const char* c = (*env)->GetStringUTFChars(env, name, NULL);
+    size_t len = 0;
+    char* c = java_string_to_utf8(env, name, &len);
+    if (c == NULL) { lua_pushnil(L); return; }
     lua_getglobal(L, c);
-    (*env)->ReleaseStringUTFChars(env, name, c);
+    free(c);
 }
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_setGlobal(JNIEnv* env, jclass cls, jlong statePtr, jstring name) {
     lua_State* L = jlong_to_lua_state(statePtr);
-    const char* c = (*env)->GetStringUTFChars(env, name, NULL);
+    size_t len = 0;
+    char* c = java_string_to_utf8(env, name, &len);
+    if (c == NULL) { lua_pop(L, 1); return; }  /* drop the value we'd have set */
     lua_setglobal(L, c);
-    (*env)->ReleaseStringUTFChars(env, name, c);
+    free(c);
 }
 
 /* ---- Load / call ---- */
 
 JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_loadString(JNIEnv* env, jclass cls, jlong statePtr, jstring s, jboolean textOnly) {
     lua_State* L = jlong_to_lua_state(statePtr);
-    const char* c = (*env)->GetStringUTFChars(env, s, NULL);
-    jsize len = (*env)->GetStringUTFLength(env, s);
-    int r = luaL_loadbufferx(L, c, (size_t)len, c, textOnly ? "t" : NULL);
-    (*env)->ReleaseStringUTFChars(env, s, c);
+    size_t len = 0;
+    char* c = java_string_to_utf8(env, s, &len);
+    if (c == NULL) return LUA_ERRMEM;
+    int r = luaL_loadbufferx(L, c, len, c, textOnly ? "t" : NULL);
+    free(c);
     return r;
 }
 
@@ -710,10 +836,10 @@ JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_pcall(JNIEnv* env, jclass cls
 
 JNIEXPORT void JNICALL Java_pw_binom_lua_LuaNative_traceback(JNIEnv* env, jclass cls, jlong statePtr, jstring msg, jint level) {
     lua_State* L = jlong_to_lua_state(statePtr);
-    const char* c = NULL;
-    if (msg != NULL) c = (*env)->GetStringUTFChars(env, msg, NULL);
+    char* c = NULL;
+    if (msg != NULL) c = java_string_to_utf8(env, msg, NULL);
     luaL_traceback(L, L, c, (int)level);
-    if (c != NULL) (*env)->ReleaseStringUTFChars(env, msg, c);
+    if (c != NULL) free(c);
 }
 
 /* ---- Tables ---- */
@@ -850,13 +976,32 @@ JNIEXPORT jstring JNICALL Java_pw_binom_lua_LuaNative_getUpvalue(JNIEnv* env, jc
     return out;
 }
 
+/*
+ * Reads upvalue `n` of the function at `funcIdx` and returns it as an integer,
+ * or -1 when the function has no such upvalue or it is not an integer. Used by
+ * readValueAt(FUNCTION, ref=false) to recover the klua callback id stored in
+ * upvalue 1 of the trampoline closures; callback ids are >= 1, so -1 means
+ * "not one of ours".
+ */
+JNIEXPORT jlong JNICALL Java_pw_binom_lua_LuaNative_upvalueInt(JNIEnv* env, jclass cls, jlong statePtr, jint funcIdx, jint n) {
+    (void)env; (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    int fi = abs_stack(L, (int)funcIdx);
+    const char* name = lua_getupvalue(L, fi, (int)n);
+    if (name == NULL) return (jlong)-1;
+    int isnum = 0;
+    lua_Integer v = lua_tointegerx(L, -1, &isnum);
+    lua_pop(L, 1);
+    return isnum ? (jlong)v : (jlong)-1;
+}
+
 /* ---- Error ---- */
 
 JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_error(JNIEnv* env, jclass cls, jlong statePtr, jstring msg) {
     (void)env; (void)cls;
     lua_State* L = jlong_to_lua_state(statePtr);
-    const char* c = msg ? (*env)->GetStringUTFChars(env, msg, NULL) : NULL;
+    char* c = msg ? java_string_to_utf8(env, msg, NULL) : NULL;
     int r = luaL_error(L, "%s", c != NULL ? c : "error");
-    if (c != NULL) (*env)->ReleaseStringUTFChars(env, msg, c);
+    if (c != NULL) free(c);
     return r;
 }
