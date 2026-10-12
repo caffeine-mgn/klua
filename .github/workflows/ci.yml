@@ -1,0 +1,106 @@
+# Continuous integration for pushes and pull requests.
+#
+# Runs the same gate as the release workflow's `test` job so a change is
+# validated before it ever reaches a tag: jvmTest (JNI Lua path), linuxX64Test
+# (Kotlin/Native Lua path) and the Android AAR build with its readelf/bionic ABI
+# check. The publish path lives in release.yml and only runs on tags.
+#
+# NOTE: this duplicates the Linux gate from release.yml on purpose — the release
+# workflow is only triggered by tags/workflow_dispatch, so without this file
+# nothing runs on ordinary commits (see AUDIT-2026-10-12.md #13).
+
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  KONAN_VERSION: "2.4.20"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+
+      # AGP needs an Android SDK with compileSdk 35 to configure the project at
+      # all (and to build the klua-android AAR); the runner image's SDK may lag,
+      # so install the platform and build-tools explicitly.
+      - name: Set up Android SDK
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMGR="$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          [ -n "$SDKMGR" ] || SDKMGR="$(command -v sdkmanager)"
+          echo "Using $SDKMGR"
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # gcc/clang build the Lua + JNI sources; mingw-w64 cross-builds the
+      # Windows .dll bundled into the JVM jar.
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ clang mingw-w64
+
+      # Konan pre-fetch as a plain download+extract: kn-clang's `downloadKonan`
+      # task is non-blocking on CI and can leave konan.properties missing for
+      # downstream toolchain tasks.
+      - name: Pre-fetch Kotlin/Native
+        run: |
+          set -euo pipefail
+          KONAN_DIR="$HOME/.konan/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}"
+          if [ ! -f "${KONAN_DIR}/konan/konan.properties" ]; then
+            echo "Downloading kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz"
+            mkdir -p "${KONAN_DIR}"
+            curl -fsSL \
+              "https://github.com/JetBrains/kotlin/releases/download/v${KONAN_VERSION}/kotlin-native-prebuilt-linux-x86_64-${KONAN_VERSION}.tar.gz" \
+              | tar -xz --strip-components=1 -C "${KONAN_DIR}"
+          fi
+          ls "${KONAN_DIR}/konan/konan.properties"
+
+      - name: Pre-fetch cross toolchains
+        run: ./gradlew downloadKonanToolchainLinux_arm64 downloadKonanToolchainMingw_x64 --stacktrace
+
+      - name: Run JVM and Linux native tests
+        run: ./gradlew jvmTest linuxX64Test --stacktrace
+
+      # Assert the AAR's native libraries are real Android/bionic binaries, not
+      # host GLIBC ones (which load on desktop but crash on every device).
+      - name: Build Android AAR and verify ABI
+        run: |
+          set -euo pipefail
+          ./gradlew assembleRelease --stacktrace
+          rm -rf /tmp/aar-so && mkdir -p /tmp/aar-so
+          unzip -o -q build/outputs/aar/klua-release.aar 'jni/*' -d /tmp/aar-so
+          export LC_ALL=C
+          fail=0
+          for so in /tmp/aar-so/jni/*/libklua.so; do
+            echo "== $so"
+            readelf -d "$so" | grep NEEDED || true
+            if readelf -d "$so" | grep -q 'libc\.so\.6'; then
+              echo "ERROR: $so links against glibc (libc.so.6), not an Android/bionic binary"
+              fail=1
+            fi
+            if ! readelf -d "$so" | grep -q 'libc\.so'; then
+              echo "ERROR: $so has no bionic libc.so dependency"
+              fail=1
+            fi
+          done
+          exit $fail
