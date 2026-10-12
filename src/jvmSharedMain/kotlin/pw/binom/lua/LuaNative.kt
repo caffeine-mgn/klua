@@ -135,6 +135,15 @@ internal object LuaNative {
     external fun getIUservalue(state: Long, idx: Int): Long
 
     external fun getUpvalue(state: Long, funcIdx: Int, upvalueIdx: Int): String?
+
+    /**
+     * Reads upvalue [n] of the function at [funcIdx] as an integer, or `-1` when
+     * the function has no such upvalue / it is not an integer. Recovers the klua
+     * callback id of our trampoline closures (stored in upvalue 1); callback ids
+     * are `>= 1`, so `-1` unambiguously means "not a klua closure".
+     */
+    external fun upvalueInt(state: Long, funcIdx: Int, n: Int): Long
+
     external fun error(state: Long, msg: String): Int
 
     private val callbacks = ConcurrentHashMap<Int, LuaCallbackBridge>()
@@ -176,7 +185,7 @@ internal object LuaNative {
             // ThreadDeath) bypass this catch and propagate to the JVM —
             // masking OOM/SOE behind a pcall-able sentinel would let host
             // code swallow unrecoverable failures.
-            lastError = e
+            lastError.set(e)
             (1L shl 31) or 0
         }
         // VirtualMachineError (OutOfMemoryError, StackOverflowError, ...)
@@ -206,11 +215,19 @@ internal object LuaNative {
         StaticRefs.dispose(mem)
     }
 
-    @Volatile
-    private var lastError: Throwable? = null
+    // The Kotlin callback that throws and the C trampoline that later asks for
+    // the message run on the SAME thread, so keep the error thread-local
+    // instead of in a static field shared by every engine and thread
+    // (AUDIT-2026-10-12.md #6). Read-and-clear so a stale failure can't leak
+    // into an unrelated callback.
+    private val lastError = ThreadLocal<Throwable?>()
 
     @JvmStatic
-    fun lastErrorMessage(): String? = lastError?.let { it::class.simpleName + ": " + (it.message ?: "") }
+    fun lastErrorMessage(): String? {
+        val e = lastError.get() ?: return null
+        lastError.remove()
+        return e::class.simpleName + ": " + (e.message ?: "")
+    }
 }
 
 internal fun interface LuaCallbackBridge {

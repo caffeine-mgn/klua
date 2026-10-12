@@ -211,7 +211,17 @@ internal class LuaContext {
                     val ptr = LuaNative.toPointer(statePtr, index)
                     LuaValue.FunctionRef(refId, ptr, this)
                 } else {
-                    LuaValue.FunctionValue(0)
+                    // Recover the klua callback id kept in upvalue 1 of our
+                    // trampoline closures, so FunctionRef.toValue() round-trips
+                    // and ObjectContainer.removeClosure(FunctionRef) can find
+                    // the bridge. `upvalueInt` returns -1 for any other Lua
+                    // function; map that to callback id 0, which is never
+                    // registered (invoking it is a no-op) — see
+                    // AUDIT-2026-10-12.md #4.
+                    LuaNative.pushValue(statePtr, index)
+                    val id = LuaNative.upvalueInt(statePtr, -1, 1)
+                    LuaNative.pop(statePtr, 1)
+                    LuaValue.FunctionValue(if (id > 0L) id.toInt() else 0)
                 }
             }
             LuaType.USERDATA -> {

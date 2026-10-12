@@ -69,9 +69,18 @@ actual class ObjectContainer actual constructor() {
         closures.clear()
     }
 
-    actual fun removeClosure(data: LuaValue.FunctionRef): Boolean = false
-    actual fun removeClosure(data: LuaValue.FunctionValue): Boolean =
-        closures.remove(data.callbackId) != null
+    actual fun removeClosure(data: LuaValue.FunctionRef): Boolean =
+        removeClosure(data.toValue())
+
+    actual fun removeClosure(data: LuaValue.FunctionValue): Boolean {
+        // Drop the local entry AND the JVM-global bridge. Without the latter
+        // the LuaNative.callbacks entry survived until the container itself was
+        // GC'd (AUDIT-2026-10-12.md #4 / old W2). unregisterCallback is safe to
+        // call twice — the container's BridgeCleaner may also drop it later.
+        val removed = closures.remove(data.callbackId) != null
+        if (removed) LuaNative.unregisterCallback(data.callbackId)
+        return removed
+    }
 
     /**
      * Cleaner action for a single bridge: invoked when its owning
