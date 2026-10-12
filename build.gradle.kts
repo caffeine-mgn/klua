@@ -284,9 +284,18 @@ kotlin {
             include("**/*.so", "**/*.dylib", "**/*.dll")
         }
 
+        // Stamp the project version into the JVM jar manifest so
+        // NativeLoader can key its extraction cache on the real version
+        // (Implementation-Version) instead of a hardcoded constant.
+        tasks.named<org.gradle.jvm.tasks.Jar>("jvmJar") {
+            manifest {
+                attributes("Implementation-Version" to project.version.toString())
+            }
+        }
+
         val jvmTest by getting {
             dependencies {
-                api(kotlin("test-junit"))
+                implementation(kotlin("test-junit"))
             }
         }
     }

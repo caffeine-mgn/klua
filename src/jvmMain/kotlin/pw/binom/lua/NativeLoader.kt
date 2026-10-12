@@ -18,7 +18,17 @@ internal actual fun loadNativeLibrary() = NativeLoader.load()
 
 internal object NativeLoader {
 
-    private const val VERSION = "1.2.0-debug"
+    /**
+     * Cache key for the extracted native library. Taken from the jar manifest
+     * (`Implementation-Version`, set from the project version in
+     * build.gradle.kts) so every release gets a fresh cache directory without
+     * hand-editing this file; falls back to "dev" when running from classes
+     * (tests/IDE) rather than the packaged jar. The SHA-256 comparison in
+     * [extractIfNeeded] is the actual integrity guard — this is only a cache
+     * key (AUDIT-2026-10-12.md #12).
+     */
+    private val VERSION: String =
+        NativeLoader::class.java.`package`?.implementationVersion ?: "dev"
     private val loaded = ConcurrentHashMap.newKeySet<String>()
     // Per-target extraction lock so concurrent load() calls don't race the
     // extract step. The first System.load must run exactly once.
