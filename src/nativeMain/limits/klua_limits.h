@@ -85,6 +85,27 @@ struct lua_State *klua_newstate(klua_control *c);
  */
 int klua_loadstring(struct lua_State *L, const char *s, const char *mode);
 
+/*
+ * Дамп функции с вершины стека в байткод Lua.
+ *
+ * Выделяет буфер через malloc и возвращает его через *out / *out_len —
+ * вызывающая сторона освобождает через klua_dump_free(). Возвращает 0 при
+ * успехе, иначе код ошибки lua_dump (1 = ошибка writer'а).
+ *
+ * Нужно, чтобы перенести функцию в ДРУГОЕ состояние: lua_State-локальные
+ * FunctionRef в чужом состоянии бесполезны. Байткод состояние-независим.
+ */
+char *klua_dumpfunction(struct lua_State *L, int strip, unsigned long long *out_len);
+
+/* Освободить буфер, полученный из klua_dumpfunction(). NULL — no-op. */
+void klua_dump_free(char *buf);
+
+/*
+ * Загрузить байткод как чанк на стек. Длина передаётся явно, чтобы не
+ * зависеть от NUL внутри байткода (он там есть). mode = "b" (binary).
+ */
+int klua_loadbytecode(struct lua_State *L, const unsigned char *buf, size_t len, const char *name);
+
 #ifdef __cplusplus
 }
 #endif

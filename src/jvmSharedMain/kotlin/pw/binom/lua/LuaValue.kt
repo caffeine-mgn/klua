@@ -307,8 +307,12 @@ actual sealed interface LuaValue {
         override fun toString(): kotlin.String = "function(${ptr.toString(16)})"
 
         actual override fun call(vararg args: LuaValue): List<LuaValue> {
+            // topBefore MUST be taken BEFORE pushing the function: pcallCall counts
+            // results as getTop() - topBefore. Pushing first shifted the base by one,
+            // so the first result was swallowed and leaked onto the Lua stack.
+            val topBefore = LuaNative.getTop(ll.state)
             ll.push(this)
-            return pcallCall(ll, args.toList())
+            return pcallCall(ll, args.toList(), topBefore)
         }
 
         actual fun toValue(): FunctionValue {
@@ -424,8 +428,19 @@ internal fun LuaValue.RefObject.callToString(ll: LuaContext): kotlin.String {
     return s ?: ""
 }
 
-internal fun pcallCall(ll: LuaContext, args: List<LuaValue>): List<LuaValue> {
-    val topBefore = LuaNative.getTop(ll.state)
+internal fun LuaContext.push(value: LuaValue) {
+    pushValue(state, value)
+}
+
+/**
+ * Call a function that is ALREADY on top of the Lua stack.
+ *
+ * [topBefore] is the stack height measured *before* the function was pushed; the
+ * caller must capture it, because `lua_pcall` replaces function+args with results
+ * in place. Counting results from the pre-push height is what keeps the first
+ * result from being swallowed (see FunctionRef.call).
+ */
+internal fun pcallCall(ll: LuaContext, args: List<LuaValue>, topBefore: Int = LuaNative.getTop(ll.state)): List<LuaValue> {
     args.forEach { pushValue(ll.state, it) }
     val r = LuaNative.pcall(ll.state, args.size, -1, 0)
     when (r) {

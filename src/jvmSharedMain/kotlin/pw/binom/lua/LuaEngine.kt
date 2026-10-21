@@ -190,17 +190,44 @@ actual class LuaEngine actual constructor(
 
     actual fun call(value: LuaValue, vararg args: LuaValue): List<LuaValue> {
         prepareLimits()
+        // topBefore снимается ДО push: pcall заменяет функцию+аргументы результатами
+        // на месте, поэтому считать от исходной высоты — единственный корректный
+        // способ. Раньше писалось getTop()==count, что верно только на чистом стеке.
+        val topBefore = LuaNative.getTop(ll.state)
         pushValue(ll.state, value)
         args.forEach { pushValue(ll.state, it) }
         val r = LuaNative.pcall(ll.state, args.size, -1, 0)
         val result = try {
-            pcallProcessing(ll, r)
+            pcallProcessing(ll, r, topBefore)
         } catch (e: Throwable) {
             throwIfLimited()
             throw e
         }
         throwIfLimited()
         return result
+    }
+
+    actual fun dumpFunction(value: LuaValue, strip: Boolean): ByteArray? {
+        pushValue(ll.state, value)
+        return try {
+            LuaNative.dumpFunction(ll.state, strip)
+        } finally {
+            // dumpFunction не снимает значение: чистим за собой в любом случае.
+            LuaNative.pop(ll.state, 1)
+        }
+    }
+
+    actual fun loadBytecode(bytes: ByteArray, name: String?): LuaValue.FunctionRef? {
+        ll.drainPendingUnrefs()
+        val r = LuaNative.loadBytecode(ll.state, bytes, name)
+        if (r != 0) {
+            // Ошибка загрузки оставляет сообщение на стеке — снимаем.
+            LuaNative.pop(ll.state, 1)
+            return null
+        }
+        val ptr = LuaNative.toPointer(ll.state, -1)
+        val refId = LuaNative.ref(ll.state, LUA_REGISTRYINDEX)
+        return LuaValue.FunctionRef(refId, ptr, ll)
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
@@ -338,12 +365,17 @@ actual class LuaEngine actual constructor(
     }
 }
 
-internal fun pcallProcessing(ll: LuaContext, exeCode: Int): List<LuaValue> {
+internal fun pcallProcessing(ll: LuaContext, exeCode: Int, topBefore: Int = 0): List<LuaValue> {
     return when (exeCode) {
         0 -> {
-            val count = LuaNative.getTop(ll.state)
-            val list = (1..count).map { ll.readValue(it, true) }
-            LuaNative.pop(ll.state, count)
+            // Считаем от высоты ДО push функции: функция и аргументы заменяются
+            // результатами на месте, поэтому getTop() как «число результатов»
+            // верно только при пустом стеке.
+            val count = LuaNative.getTop(ll.state) - topBefore
+            val list = if (count <= 0) emptyList() else {
+                (1..count).map { ll.readValue(topBefore + it, true) }
+            }
+            if (count > 0) LuaNative.pop(ll.state, count)
             list
         }
         2 -> {

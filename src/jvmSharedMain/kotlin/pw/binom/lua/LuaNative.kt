@@ -109,6 +109,12 @@ internal object LuaNative {
     external fun setGlobal(state: Long, name: String)
 
     external fun loadString(state: Long, s: String, textOnly: Boolean): Int
+
+    /** Дамп функции с вершины стека в байткод. null — ошибка. */
+    external fun dumpFunction(state: Long, strip: Boolean): ByteArray?
+
+    /** Загрузить байткод как чанк на стек. 0 = OK. */
+    external fun loadBytecode(state: Long, bytes: ByteArray, name: String?): Int
     external fun pcall(state: Long, nargs: Int, nresults: Int, errfunc: Int): Int
     external fun traceback(state: Long, msg: String?, level: Int)
 

@@ -120,3 +120,50 @@ lua_State *klua_newstate(klua_control *c) {
 int klua_loadstring(lua_State *L, const char *s, const char *mode) {
     return luaL_loadbufferx(L, s, strlen(s), s, mode);
 }
+
+/* ---- bytecode dump/load: перенос функции между состояниями ---- */
+
+typedef struct {
+    char  *data;
+    size_t len;
+    size_t cap;
+    int    oom;
+} klua_dump_buf;
+
+static int klua_dump_writer(lua_State *L, const void *p, size_t sz, void *ud) {
+    (void)L;
+    klua_dump_buf *b = (klua_dump_buf *)ud;
+    if (b->oom) return 1;
+    if (b->len + sz > b->cap) {
+        size_t cap = b->cap ? b->cap * 2 : 4096;
+        while (cap < b->len + sz) cap *= 2;
+        char *nd = (char *)realloc(b->data, cap);
+        if (!nd) { b->oom = 1; return 1; }
+        b->data = nd;
+        b->cap  = cap;
+    }
+    memcpy(b->data + b->len, p, sz);
+    b->len += sz;
+    return 0;
+}
+
+char *klua_dumpfunction(lua_State *L, int strip, unsigned long long *out_len) {
+    klua_dump_buf b;
+    b.data = NULL; b.len = 0; b.cap = 0; b.oom = 0;
+    *out_len = 0;
+    int r = lua_dump(L, klua_dump_writer, &b, strip ? 1 : 0);
+    if (r != 0 || b.oom) {
+        free(b.data);
+        return NULL;
+    }
+    *out_len = (unsigned long long)b.len;
+    return b.data;
+}
+
+void klua_dump_free(char *buf) {
+    free(buf);
+}
+
+int klua_loadbytecode(lua_State *L, const unsigned char *buf, size_t len, const char *name) {
+    return luaL_loadbufferx(L, (const char *)buf, len, name ? name : "=klua-dump", "b");
+}

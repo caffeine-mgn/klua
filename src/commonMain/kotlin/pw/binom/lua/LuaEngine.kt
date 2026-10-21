@@ -47,6 +47,25 @@ expect class LuaEngine(
     fun makeRef(value: LuaValue.TableValue): LuaValue.TableRef
 
     /**
+     * Скомпилировать функцию в байткод Lua.
+     *
+     * Нужно, чтобы перенести функцию в ДРУГОЕ состояние: `FunctionRef` привязан
+     * к своему `lua_State` (это refId в его registry) и в чужом состоянии
+     * бесполезен. Байткод же состояние-независим — его можно загрузить в каждое
+     * состояние пула через [loadBytecode] и получить независимые копии одной
+     * функции.
+     *
+     * @param strip true — выбросить отладочную информацию (имена, номера строк).
+     */
+    fun dumpFunction(value: LuaValue, strip: Boolean = false): ByteArray?
+
+    /**
+     * Загрузить байткод (из [dumpFunction]) как функцию в это состояние.
+     * Возвращает ссылку на функцию или null, если байткод не принят.
+     */
+    fun loadBytecode(bytes: ByteArray, name: String? = null): LuaValue.FunctionRef?
+
+    /**
      * Creates userdata from [value]
      * @param value input pointer
      * @return created useddata. Value of userdata is pointer of [value]

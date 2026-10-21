@@ -295,8 +295,11 @@ actual sealed interface LuaValue {
         override fun toString(): kotlin.String = "function(${ptr.strPtr()})"
 
         actual override fun call(vararg args: LuaValue): List<LuaValue> {
+            // topBefore ДО push функции: иначе первый результат съедается,
+            // а лишнее остаётся на стеке (симметрично багу в JVM-части).
+            val topBefore = lua_gettop(ll.state)
             ll.pushValue(this)
-            return ll.callClosure(*args)
+            return ll.callClosureAt(topBefore, *args)
         }
 
         actual fun toValue(): FunctionValue =

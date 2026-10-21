@@ -1,7 +1,19 @@
 package pw.binom.lua
 
+import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.ULongVar
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.allocArray
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.get
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import platform.internal_lua.*
 
 @OptIn(ExperimentalForeignApi::class)
@@ -156,13 +168,14 @@ actual class LuaEngine actual constructor(
         vararg args: LuaValue,
     ): List<LuaValue> {
         prepareLimits()
+        val topBefore = lua_gettop(ll.state)
         ll.pushValue(value)
         args.forEach {
             ll.pushValue(it)
         }
         val exec = lua_pcall1(ll.state, args.size, LUA_MULTRET, 0)
         val result = try {
-            pcallProcessing(ll, exec)
+            pcallProcessing(ll, exec, topBefore)
         } catch (e: Throwable) {
             throwIfLimited()
             throw e
@@ -201,6 +214,48 @@ actual class LuaEngine actual constructor(
      */
     private fun installBinaryChunkGuard() {
         eval(BINARY_CHUNK_GUARD_SCRIPT)
+    }
+
+    actual fun dumpFunction(value: LuaValue, strip: Boolean): ByteArray? {
+        return ll.state.checkState {
+            ll.pushValue(value)
+            memScoped {
+                val lenVar = alloc<ULongVar>()
+                lenVar.value = 0uL
+                val p = klua_dumpfunction(ll.state, if (strip) 1 else 0, lenVar.ptr)
+                lua_pop(ll.state, 1) // снимаем саму функцию
+                if (p == null) {
+                    return@checkState null
+                }
+                val len = lenVar.value.toInt()
+                val result = ByteArray(len) { i -> p.get(i).toByte() }
+                klua_dump_free(p)
+                result
+            }
+        }
+    }
+
+    actual fun loadBytecode(bytes: ByteArray, name: String?): LuaValue.FunctionRef? {
+        if (bytes.isEmpty()) return null
+        return ll.state.checkState {
+            // cinterop мапит `const char*` в Kotlin String, а в байткоде есть NUL,
+            // поэтому в C-сигнатуре стоит `const unsigned char*` — здесь указатель.
+            bytes.usePinned { pinned ->
+                val buf = pinned.addressOf(0).reinterpret<UByteVar>()
+                val r = klua_loadbytecode(ll.state, buf, bytes.size.toULong(), name)
+                if (r != 0) {
+                    lua_pop(ll.state, 1) // сообщение об ошибке
+                    return@checkState null
+                }
+                val ptr = lua_topointer(ll.state, -1)
+                    ?: run {
+                        lua_pop(ll.state, 1)
+                        return@checkState null
+                    }
+                val ref = ll.state.makeRef(popValue = true)
+                LuaValue.FunctionRef(ref = ref, ptr = ptr, ll = ll)
+            }
+        }
     }
 
     actual fun makeRef(value: LuaValue.FunctionValue): LuaValue.FunctionRef {
@@ -319,22 +374,45 @@ actual class LuaEngine actual constructor(
     }
 }
 
+/**
+ * Call a function that is ALREADY on top of the Lua stack.
+ *
+ * [topBefore] — высота стека ДО push функции. Считать результаты как
+ * `lua_gettop()` можно только при пустом стеке: `lua_pcall` заменяет
+ * функцию+аргументы результатами на месте, поэтому первый результат иначе
+ * съедается, а лишнее остаётся на стеке (симметрично багу в JVM-части).
+ */
 @OptIn(ExperimentalForeignApi::class)
 internal fun LuaContext.callClosure(vararg args: LuaValue): List<LuaValue> {
+    val topBefore = lua_gettop(state)
+    return callClosureAt(topBefore, *args)
+}
+
+/**
+ * Вызов функции, УЖЕ лежащей на вершине стека.
+ *
+ * [topBefore] — высота стека ДО того, как функция была положена. Считать
+ * результаты от `lua_gettop()` можно только при пустом стеке: `lua_pcall`
+ * заменяет функцию+аргументы результатами на месте, поэтому иначе первый
+ * результат съедается, а лишнее остаётся на стеке.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun LuaContext.callClosureAt(topBefore: Int, vararg args: LuaValue): List<LuaValue> {
     args.forEach {
         pushValue(it)
     }
     val exec = lua_pcall1(state, args.size, LUA_MULTRET, 0)
-    return pcallProcessing(this, exec)
+    return pcallProcessing(this, exec, topBefore)
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun pcallProcessing(luaLib: LuaContext, exeCode: Int): List<LuaValue> {
+private fun pcallProcessing(luaLib: LuaContext, exeCode: Int, topBefore: Int = 0): List<LuaValue> {
     when (exeCode) {
         LUA_OK -> {
-            val count = lua_gettop(luaLib.state)
+            val count = lua_gettop(luaLib.state) - topBefore
+            if (count <= 0) return emptyList()
             val list = (1..count).map {
-                luaLib.readValue(it, true)
+                luaLib.readValue(topBefore + it, true)
             }
             lua_pop(luaLib.state, count)
             return list

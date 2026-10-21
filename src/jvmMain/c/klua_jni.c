@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "lua.h"
 #include "lualib.h"
@@ -826,6 +827,76 @@ JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_loadString(JNIEnv* env, jclas
     if (c == NULL) return LUA_ERRMEM;
     int r = luaL_loadbufferx(L, c, len, c, textOnly ? "t" : NULL);
     free(c);
+    return r;
+}
+
+/* ---- Bytecode: dump / load (перенос функции между состояниями) ---- */
+
+/*
+ * lua_dump пишет байткод в C-writer. JNI-колбэк из C в Java на каждый чанк
+ * дорог и хрупок, поэтому копим в растущий буфер и отдаём одним jbyteArray.
+ */
+typedef struct {
+    char*  data;
+    size_t len;
+    size_t cap;
+    int    oom;
+} klua_dump_buf;
+
+static int klua_dump_writer(lua_State* L, const void* p, size_t sz, void* ud) {
+    (void)L;
+    klua_dump_buf* b = (klua_dump_buf*)ud;
+    if (b->oom) return 1;
+    if (b->len + sz > b->cap) {
+        size_t cap = b->cap ? b->cap * 2 : 4096;
+        while (cap < b->len + sz) cap *= 2;
+        char* nd = (char*)realloc(b->data, cap);
+        if (!nd) { b->oom = 1; return 1; }
+        b->data = nd;
+        b->cap  = cap;
+    }
+    memcpy(b->data + b->len, p, sz);
+    b->len += sz;
+    return 0;
+}
+
+/*
+ * Дамп функции, лежащей на вершине стека. Возвращает byte[] или NULL.
+ * strip != 0 — выбросить отладочную информацию (имена, номера строк).
+ */
+JNIEXPORT jbyteArray JNICALL Java_pw_binom_lua_LuaNative_dumpFunction(JNIEnv* env, jclass cls, jlong statePtr, jboolean strip) {
+    (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    klua_dump_buf b = {0};
+    int r = lua_dump(L, klua_dump_writer, &b, strip ? 1 : 0);
+    if (r != 0 || b.oom) {
+        free(b.data);
+        return NULL;
+    }
+    jbyteArray out = (*env)->NewByteArray(env, (jsize)b.len);
+    if (out != NULL && b.len > 0) {
+        (*env)->SetByteArrayRegion(env, out, 0, (jsize)b.len, (const jbyte*)b.data);
+    }
+    free(b.data);
+    return out;
+}
+
+/*
+ * Загрузить байткод как чанк (функцию) на стек. Binary chunks разрешены
+ * всегда: это внутренний дамп, а не пользовательский ввод.
+ * Возвращает статус luaL_loadbufferx: 0 = OK.
+ */
+JNIEXPORT jint JNICALL Java_pw_binom_lua_LuaNative_loadBytecode(JNIEnv* env, jclass cls, jlong statePtr, jbyteArray bytes, jstring name) {
+    (void)cls;
+    lua_State* L = jlong_to_lua_state(statePtr);
+    jsize len = (*env)->GetArrayLength(env, bytes);
+    jbyte* buf = (*env)->GetByteArrayElements(env, bytes, NULL);
+    if (buf == NULL) return -1;
+    const char* cname = "=klua-dump";
+    if (name != NULL) cname = (*env)->GetStringUTFChars(env, name, NULL);
+    int r = luaL_loadbufferx(L, (const char*)buf, (size_t)len, cname, "b");
+    if (name != NULL) (*env)->ReleaseStringUTFChars(env, name, cname);
+    (*env)->ReleaseByteArrayElements(env, bytes, buf, JNI_ABORT);
     return r;
 }
 
