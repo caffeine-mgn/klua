@@ -75,6 +75,7 @@ actual class LuaEngine actual constructor(
     }
 
     actual fun eval(text: String): List<pw.binom.lua.LuaValue> {
+        ll.drainRefDisposals()
         prepareLimits()
         // We can't call `luaL_loadbufferx` directly from Kotlin/Native because
         // its `size_t sz` parameter maps to `ULong` on 64-bit K/N targets and
@@ -123,6 +124,7 @@ actual class LuaEngine actual constructor(
         functionName: String,
         vararg args: LuaValue,
     ): List<LuaValue> {
+        ll.drainRefDisposals()
         prepareLimits()
         lua_getglobal(ll.state, functionName)
         if (lua_isnil1(ll.state, -1)) {

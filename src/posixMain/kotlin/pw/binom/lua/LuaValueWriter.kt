@@ -6,6 +6,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.internal_lua.*
 
 internal fun LuaContext.pushValue(value: LuaValue) {
+    // Освобождаем ref'ы, накопленные финализатором, — строго на этой нити и
+    // вне активного вызова Lua.
+    drainRefDisposals()
     when (value) {
         LuaValue.Nil,
         is LuaValue.Nil -> lua_pushnil(state)

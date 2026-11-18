@@ -3,6 +3,8 @@ package pw.binom.lua
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.internal_lua.luaL_openlibs
 import platform.internal_lua.lua_close
+import platform.internal_lua.luaL_unref
+import platform.internal_lua.LUA_REGISTRYINDEX
 import platform.internal_lua.klua_control
 import platform.internal_lua.klua_control_free
 import platform.internal_lua.klua_control_reason
@@ -44,12 +46,46 @@ internal class LuaContext(limits: LuaLimits = LuaLimits.UNLIMITED) {
     // (a Kotlin/Native requirement) and never references the LuaContext.
     private val resources = LuaContextResources(state, control)
 
+    /**
+     * Очередь отложенного освобождения Lua-ref'ов.
+     *
+     * klua освобождает ref'ы из финализатора GC-потока. Вызывать оттуда
+     * `luaL_unref` нельзя: (1) состояние может быть уже закрыто — это
+     * use-after-free и SIGSEGV; (2) вызов шёл бы параллельно с обычными
+     * операциями над `lua_State`, который не потокобезопасен. Поэтому
+     * финализатор только складывает id в очередь (это единственное, что он
+     * делает с состоянием), а настоящий `luaL_unref` выполняется на
+     * «хозяйской» нити в [drainRefDisposals], перед следующей операцией с Lua.
+     */
+    private val pendingRefs = RefDisposalQueue()
+
     private val cleaner = createCleaner(resources) { res ->
         if (res.closed.compareAndSet(0, 1)) {
             LuaContextRegistry.unregister(res.state)
             lua_close(res.state)
             klua_control_free(res.control)
         }
+    }
+
+    /**
+     * Складывает ref в очередь отложенного освобождения. Безопасно вызывать
+     * с любой нити (в том числе из финализатора): не трогает `lua_State`.
+     */
+    internal fun enqueueRefDisposal(ref: LuaRef) {
+        pendingRefs.push(ref.id)
+    }
+
+    /**
+     * Освобождает ref'ы, накопленные финализатором. Обязан вызываться с той
+     * же «хозяйской» нити, что и остальные операции с этим состоянием, и не
+     * во время активного вызова Lua.
+     */
+    internal fun drainRefDisposals() {
+        if (pendingRefs.isEmpty()) return
+        val ids = pendingRefs.drain()
+        // Состояние уже закрыто — unref'ить нечего, и указатель невалиден.
+        if (resources.closed.value != 0) return
+        ids.forEach { luaL_unref(state, LUA_REGISTRYINDEX, it) }
     }
 
     /**
@@ -71,6 +107,9 @@ internal class LuaContext(limits: LuaLimits = LuaLimits.UNLIMITED) {
     /** Releases the Lua state and the limit control block exactly once. */
     fun close() {
         if (resources.closed.compareAndSet(0, 1)) {
+            // Финализаторы могли успеть накопить ref'ы — состояние всё равно
+            // освобождается целиком, отдельный unref не нужен.
+            pendingRefs.clear()
             LuaContextRegistry.unregister(state)
             lua_close(state)
             klua_control_free(control)
@@ -94,6 +133,60 @@ internal class LuaContext(limits: LuaLimits = LuaLimits.UNLIMITED) {
 
     /** Last limit reason (KLUA_REASON_*), 0 if none. */
     fun lastLimitReason(): Int = klua_control_reason(control)
+}
+
+/**
+ * Потокобезопасная очередь id Lua-ref'ов, ожидающих `luaL_unref`.
+ *
+ * Push идёт из финализатора GC-потока, drain — с «хозяйской» нити состояния.
+ * Реализация на спинлоке: операции короткие (добавить/забрать int), а
+ * зависимости от atomicfu/блокирующих мьютексов не нужны.
+ */
+@OptIn(ExperimentalNativeApi::class)
+internal class RefDisposalQueue {
+    private val lock = AtomicInt(0)
+    private val count = AtomicInt(0)
+    private val items = ArrayList<Int>()
+
+    private inline fun <T> locked(block: () -> T): T {
+        while (!lock.compareAndSet(0, 1)) {
+            // Короткая критическая секция: только работа с ArrayList.
+        }
+        try {
+            return block()
+        } finally {
+            lock.value = 0
+        }
+    }
+
+    fun push(id: Int) {
+        locked { items.add(id) }
+        count.addAndGet(1)
+    }
+
+    /** Дешёвая проверка без захвата лока — только чтобы пропустить пустой случай. */
+    fun isEmpty(): Boolean = count.value == 0
+
+    fun drain(): List<Int> {
+        val out = locked {
+            if (items.isEmpty()) {
+                emptyList()
+            } else {
+                val copy = ArrayList(items)
+                items.clear()
+                copy
+            }
+        }
+        if (out.isNotEmpty()) {
+            count.addAndGet(-out.size)
+        }
+        return out
+    }
+
+    fun clear() {
+        locked { items.clear() }
+        count.value = 0
+    }
 }
 
 /**
@@ -134,13 +227,23 @@ internal object LuaContextRegistry {
     // the caller's contract to serialise.
     private val map = HashMap<LuaState, LuaContext>()
 
-    fun register(state: LuaState, ctx: LuaContext) {
-        map[state] = ctx
+    // Финализатор LuaContext вызывает unregister() с нити GC, поэтому карта
+    // должна быть защищена: спинлок на короткие операции register/lookup.
+    private val lock = AtomicInt(0)
+
+    private inline fun <T> locked(block: () -> T): T {
+        while (!lock.compareAndSet(0, 1)) {
+        }
+        try {
+            return block()
+        } finally {
+            lock.value = 0
+        }
     }
 
-    fun unregister(state: LuaState) {
-        map.remove(state)
-    }
+    fun register(state: LuaState, ctx: LuaContext) = locked { map[state] = ctx }
 
-    fun lookup(state: LuaState): LuaContext? = map[state]
+    fun unregister(state: LuaState) = locked { map.remove(state) }
+
+    fun lookup(state: LuaState): LuaContext? = locked { map[state] }
 }

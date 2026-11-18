@@ -15,7 +15,11 @@ typealias LuaState = CPointer<lua_State>
 
 @OptIn(ExperimentalNativeApi::class, ExperimentalForeignApi::class)
 internal fun createCleaner1(state: LuaContext, ref: LuaRef): Any = createCleaner(state to ref) {
-    it.first.state.disposeRef(it.second)
+    // ВАЖНО: только в очередь. Финализатор работает на нити GC, а lua_State
+    // не потокобезопасен; после LuaContext.close() указатель и вовсе
+    // невалиден. Настоящий luaL_unref делает drainRefDisposals() на
+    // «хозяйской» нити.
+    it.first.enqueueRefDisposal(it.second)
 }
 
 @OptIn(ExperimentalForeignApi::class)
