@@ -9,7 +9,7 @@
 #     readelf/bionic ABI gate. A linuxX64 test binary cannot be executed on
 #     macOS, so Linux coverage lives here.
 #
-#   publish (macos-14) — the release host. macOS is the only Kotlin/Native host
+#   publish (macos-15) — the release host. macOS is the only Kotlin/Native host
 #     that can build the Apple targets (macosArm64), and it can also
 #     cross-build *every* other target (linuxX64/linuxArm64, mingwX64,
 #     androidNative*, the Android AAR) once the target jni_md.h headers are
@@ -147,7 +147,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish:
     needs: test
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -232,7 +232,7 @@ jobs:
       # Host-side gate on the publishing host: jvmTest exercises the JNI path
       # against the freshly built darwin dylib; the Apple K/N tests cover the
       # Kotlin/Native Lua path on every Apple-family simulator target that the
-      # macos-14 runner can host (Kotlin/Native 2.4+ auto-discovers the
+      # macos-15 runner can host (Kotlin/Native 2.4+ auto-discovers the
       # iOS/watchOS/tvOS simulator runtime shipped with the preinstalled
       # Xcode). Device targets (iosArm64, watchosArm64, tvosArm64) and Intel
       # simulators (iosX64, watchosX64, tvosX64) are built and linked but
